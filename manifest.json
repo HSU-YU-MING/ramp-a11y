@@ -3,6 +3,7 @@
   "name": "Ramp",
   "description": "網頁無障礙檢測工具：掃描當前頁面的 WCAG 問題，以繁體中文對應台灣「網站無障礙規範」說明與修正建議。",
   "version": "0.1.0",
+  "minimum_chrome_version": "102",
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "Ramp 無障礙檢測",

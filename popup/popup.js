@@ -1,10 +1,10 @@
 /**
  * popup/popup.js
  * 主控流程：
- *  1. 取得當前分頁 → 檢查是否為受保護頁面
- *  2. 注入 vendor/axe.min.js 與 content/scanner.js
+ *  1. 取得當前分頁 → 檢查是否為受保護頁面（開啟時即檢查，並嘗試還原同頁快取）
+ *  2. 注入 vendor/axe.min.js、vendor/axe-locale-zh_TW.js 與 content/scanner.js
  *  3. 呼叫頁面內的 __rampA11yScan() 取得序列化結果
- *  4. 以 data/rules-map.json 轉譯為台灣規範的繁中說明後渲染
+ *  4. 以 data/rules-map.json 轉譯為台灣規範的繁中說明後渲染，並存入 session 快取
  *  5. 點擊受影響元素 → 呼叫頁面內的 __rampA11yHighlight() 高亮定位
  */
 
@@ -187,13 +187,16 @@ async function runScan() {
 
 /**
  * 將單一 axe 規則結果轉譯為顯示用資料。
- * 未在對應表中的規則保留 axe 原始英文並標示「尚未在地化」。
+ * 未在對應表中的規則沿用 axe 的說明文字（經 zh_TW 語言包多為繁中），
+ * 並依 tags 分流為「未對應台灣準則」或「最佳實務建議」。
  */
 function translateRule(rule) {
   const map = rulesMap.get(rule.id);
   const common = {
     helpUrl: rule.helpUrl,
     nodes: rule.nodes,
+    // scanner 端最多回傳 20 個元素，nodeCount 為實際總數
+    nodeCount: rule.nodeCount != null ? rule.nodeCount : rule.nodes.length,
     axeId: rule.id,
     impact: rule.impact || null,
     // best-practice 為 axe 的最佳實務建議，並非 WCAG 失敗項，需與違規分流
@@ -283,7 +286,7 @@ function issueHtml(item, badgeClass, badgeText) {
         <span class="badge ${badgeClass}">${escapeHtml(badgeText)}</span>
         <span class="issue-title">${escapeHtml(item.title)}</span>
         ${item.mapped ? `<span class="issue-guideline">${escapeHtml(item.guideline)}</span>` : ''}
-        <span class="issue-count">${item.nodes.length} 個元素</span>
+        <span class="issue-count">${item.nodeCount} 個元素</span>
         <span class="chevron" aria-hidden="true">▶</span>
       </button>
       <div class="issue-body" hidden>
@@ -292,6 +295,7 @@ function issueHtml(item, badgeClass, badgeText) {
         ${howHtml}
         <p><strong>受影響元素（點擊可在頁面上定位）：</strong></p>
         <ul class="nodes">${nodesHtml}</ul>
+        ${item.nodeCount > item.nodes.length ? `<p class="node-more">還有 ${item.nodeCount - item.nodes.length} 個元素未列出（僅顯示前 ${item.nodes.length} 個）</p>` : ''}
         <a class="help-link" href="${escapeHtml(item.helpUrl)}" target="_blank" rel="noopener">axe 規則詳細說明（英文）</a>
       </div>
     </div>`;
@@ -365,16 +369,34 @@ function renderResults(result, cachedTs) {
 
 // ===== 高亮定位 =====
 
+/**
+ * 呼叫頁面內的高亮函式。
+ * 回傳 true（成功）、false（找不到元素）或 'missing'（掃描器尚未注入，
+ * 例如快取還原後頁面曾重新整理，isolated world 已是全新的）。
+ */
+async function execHighlight(selector) {
+  const injection = await chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: (sel) => (window.__rampA11yHighlight ? window.__rampA11yHighlight(sel) : 'missing'),
+    args: [selector],
+  });
+  return injection && injection[0] ? injection[0].result : false;
+}
+
 /** 在原頁面高亮指定元素並捲動過去 */
 async function highlightOnPage(selector) {
   if (currentTabId == null) return false;
   try {
-    const injection = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      func: (sel) => window.__rampA11yHighlight && window.__rampA11yHighlight(sel),
-      args: [selector],
-    });
-    return Boolean(injection && injection[0] && injection[0].result);
+    let res = await execHighlight(selector);
+    if (res === 'missing') {
+      // 補注入掃描器後重試一次（高亮不需要 axe 本體）
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        files: ['content/scanner.js'],
+      });
+      res = await execHighlight(selector);
+    }
+    return res === true;
   } catch {
     return false;
   }
@@ -386,11 +408,21 @@ btnScan.addEventListener('click', runScan);
 btnRescan.addEventListener('click', runScan);
 btnRetry.addEventListener('click', runScan);
 
-// popup 開啟時：若同一分頁、同一網址有快取結果，直接還原（不必重掃）
-(async function restoreFromCache() {
+// popup 開啟時：
+//  1. 受保護頁面直接顯示「無法檢測」，不給一顆註定失敗的按鈕
+//  2. 若同一分頁、同一網址有快取結果，直接還原（不必重掃）
+(async function initPopup() {
   try {
     const tab = await getActiveTab();
     if (!tab) return;
+    if (isRestrictedUrl(tab.url)) {
+      showError(
+        '此頁面無法檢測',
+        '瀏覽器內建頁面（chrome:// 等）與擴充功能商店基於安全限制，無法注入檢測腳本。請切換到一般網頁再試。',
+        false
+      );
+      return;
+    }
     const key = 'scan_' + tab.id;
     const store = await chrome.storage.session.get(key);
     const cached = store[key];
@@ -400,7 +432,7 @@ btnRetry.addEventListener('click', runScan);
       renderResults(cached.result, cached.ts);
     }
   } catch {
-    // 還原失敗就停留在初始畫面，不影響使用
+    // 初始化失敗就停留在初始畫面，不影響使用
   }
 })();
 

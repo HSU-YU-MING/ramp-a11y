@@ -78,6 +78,10 @@
       },
     });
 
+    // 每條規則最多回傳的元素數：大型頁面單一規則可能有上千個元素，
+    // 全數回傳會拖垮 popup 渲染與 session 快取
+    const MAX_NODES = 20;
+
     /** 將 axe 結果轉為精簡、可序列化的資料 */
     const pick = (list) =>
       list.map((rule) => ({
@@ -87,7 +91,8 @@
         help: rule.help,
         description: rule.description,
         helpUrl: rule.helpUrl,
-        nodes: rule.nodes.map((node) => ({
+        nodeCount: rule.nodes.length,
+        nodes: rule.nodes.slice(0, MAX_NODES).map((node) => ({
           // target 為 selector 陣列（iframe/shadow DOM 時為巢狀），MVP 攤平成字串
           target: Array.isArray(node.target)
             ? node.target.flat().map(String).join(' ')
