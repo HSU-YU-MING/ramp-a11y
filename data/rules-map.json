@@ -1,0 +1,146 @@
+[
+  {
+    "axeRuleId": "color-contrast",
+    "twGuideline": "1.4.3",
+    "twLevel": "AA",
+    "category": "可感知",
+    "titleZh": "文字與背景對比不足",
+    "whyZh": "低對比會使弱視、高齡或在強光環境下的使用者難以辨識文字內容。",
+    "howZh": "將文字與背景的對比提高至 4.5:1（大型文字 3:1）以上。"
+  },
+  {
+    "axeRuleId": "image-alt",
+    "twGuideline": "1.1.1",
+    "twLevel": "A",
+    "category": "可感知",
+    "titleZh": "圖片缺少替代文字",
+    "whyZh": "報讀軟體無法描述沒有 alt 的圖片，視障使用者會錯過圖片所傳達的資訊。",
+    "howZh": "為有意義的圖片加上描述性的 alt 文字；純裝飾性圖片則使用空的 alt（alt=\"\"）。"
+  },
+  {
+    "axeRuleId": "document-title",
+    "twGuideline": "2.4.2",
+    "twLevel": "A",
+    "category": "可操作",
+    "titleZh": "網頁缺少標題",
+    "whyZh": "沒有標題時，報讀軟體與瀏覽器分頁列都無法告知使用者目前所在的頁面。",
+    "howZh": "在 <title> 中填入能清楚描述該頁內容的標題。"
+  },
+  {
+    "axeRuleId": "html-has-lang",
+    "twGuideline": "3.1.1",
+    "twLevel": "A",
+    "category": "可理解",
+    "titleZh": "未標示網頁語言",
+    "whyZh": "未設定 lang 屬性時，報讀軟體可能以錯誤的語音引擎朗讀內容。",
+    "howZh": "在 <html lang=\"zh-Hant\"> 標示正確的網頁語言。"
+  },
+  {
+    "axeRuleId": "label",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "表單欄位缺少標籤",
+    "whyZh": "欄位沒有標籤時，使用輔助科技的使用者不知道該欄位要填什麼。",
+    "howZh": "使用 <label for> 或 aria-label 將標籤與欄位明確關聯。"
+  },
+  {
+    "axeRuleId": "link-name",
+    "twGuideline": "2.4.4",
+    "twLevel": "A",
+    "category": "可操作",
+    "titleZh": "連結沒有可辨識文字",
+    "whyZh": "空連結或僅有圖示的連結，報讀軟體只念得出「連結」，使用者無從得知目的。",
+    "howZh": "提供能描述連結目的的文字，或加上 aria-label。"
+  },
+  {
+    "axeRuleId": "button-name",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "按鈕沒有可辨識名稱",
+    "whyZh": "沒有文字的按鈕，輔助科技使用者無法辨識其用途。",
+    "howZh": "補上可見文字，或以 aria-label 提供名稱。"
+  },
+  {
+    "axeRuleId": "heading-order",
+    "twGuideline": "1.3.1",
+    "twLevel": "A",
+    "category": "可感知",
+    "titleZh": "標題階層順序錯亂",
+    "whyZh": "標題跳階會破壞內容結構的理解，也讓使用標題導覽的使用者迷失方向。",
+    "howZh": "依內容層級循序使用標題（h1、h2、h3⋯），不要跳階。"
+  },
+  {
+    "axeRuleId": "list",
+    "twGuideline": "1.3.1",
+    "twLevel": "A",
+    "category": "可感知",
+    "titleZh": "清單結構不正確",
+    "whyZh": "用非清單標記假裝清單，報讀軟體無法正確辨識與導覽清單項目。",
+    "howZh": "使用 <ul>/<ol> 搭配 <li> 正確標記清單結構。"
+  },
+  {
+    "axeRuleId": "frame-title",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "iframe 缺少標題",
+    "whyZh": "沒有標題的 iframe 讓輔助科技使用者不知道內嵌的內容是什麼。",
+    "howZh": "為 iframe 加上 title 屬性描述其用途。"
+  },
+  {
+    "axeRuleId": "aria-required-attr",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "ARIA 缺少必要屬性",
+    "whyZh": "ARIA 角色缺少必填屬性時，輔助科技會解讀錯誤或無法運作。",
+    "howZh": "依規範補齊該 ARIA 角色所需的必要屬性。"
+  },
+  {
+    "axeRuleId": "aria-valid-attr-value",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "ARIA 屬性值無效",
+    "whyZh": "無效的 ARIA 屬性值會使輔助科技的行為不可預期。",
+    "howZh": "依 ARIA 規範填入合法的屬性值。"
+  },
+  {
+    "axeRuleId": "duplicate-id",
+    "twGuideline": "4.1.1",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "出現重複的 id",
+    "whyZh": "重複的 id 會使標籤關聯、腳本與輔助科技的指向錯亂。（註：WCAG 2.2 已移除對應的 4.1.1「剖析」，但台灣現行規範仍沿用，故保留。）",
+    "howZh": "確保每個 id 在頁面中唯一。"
+  },
+  {
+    "axeRuleId": "duplicate-id-aria",
+    "twGuideline": "4.1.2",
+    "twLevel": "A",
+    "category": "強健",
+    "titleZh": "ARIA 與標籤參照的 id 重複",
+    "whyZh": "被 aria-labelledby、label for 等參照的 id 若重複，輔助科技會關聯到錯誤的元素，唸出錯誤的名稱或說明。",
+    "howZh": "確保被 ARIA 屬性與 <label> 參照的每個 id 在頁面中唯一。"
+  },
+  {
+    "axeRuleId": "link-in-text-block",
+    "twGuideline": "1.4.1",
+    "twLevel": "A",
+    "category": "可感知",
+    "titleZh": "連結僅以顏色區辨",
+    "whyZh": "只靠顏色標示連結，色覺障礙的使用者無法將連結與一般文字分辨開來。",
+    "howZh": "另加底線或其他非顏色的視覺線索標示連結。"
+  },
+  {
+    "axeRuleId": "focus-visible",
+    "twGuideline": "2.4.7",
+    "twLevel": "AA",
+    "category": "可操作",
+    "titleZh": "鍵盤焦點不明顯",
+    "whyZh": "鍵盤操作者看不到目前焦點的位置，就無法有效導覽頁面。",
+    "howZh": "保留或加強 :focus 的可見樣式（此項多需人工確認實際視覺效果）。"
+  }
+]

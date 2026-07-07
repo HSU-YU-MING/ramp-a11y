@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Ramp",
+  "description": "網頁無障礙檢測工具：掃描當前頁面的 WCAG 問題，以繁體中文對應台灣「網站無障礙規範」說明與修正建議。",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Ramp 無障礙檢測",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  }
+}

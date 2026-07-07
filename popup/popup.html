@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Ramp 無障礙檢測</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- 頂部標誌列（所有狀態共用） -->
+  <header class="app-header">
+    <svg class="app-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M2 20 L22 20 L22 5 Z" fill="currentColor" />
+    </svg>
+    <h1 class="app-name">Ramp</h1>
+    <span class="app-tagline">網頁無障礙檢測</span>
+  </header>
+
+  <main>
+    <!-- 狀態一：初始畫面 -->
+    <section id="view-initial" class="view view-center">
+      <p class="intro">
+        掃描目前頁面的無障礙問題，<br />
+        以繁體中文對應台灣「網站無障礙規範」。
+      </p>
+      <button id="btn-scan" class="btn btn-primary" type="button">開始檢測</button>
+    </section>
+
+    <!-- 狀態二：載入中 -->
+    <section id="view-loading" class="view view-center" hidden>
+      <div class="spinner" role="status" aria-live="polite">
+        <span class="visually-hidden">載入中</span>
+      </div>
+      <p class="loading-text">檢測中…</p>
+    </section>
+
+    <!-- 狀態三：結果面板 -->
+    <section id="view-results" class="view" hidden>
+      <!-- 頂部統計列（固定不捲動） -->
+      <div id="stats" class="stats" aria-live="polite"></div>
+      <!-- 快取還原提示（僅還原上次結果時顯示） -->
+      <p id="cache-note" class="cache-note" hidden></p>
+      <!-- 可捲動的問題清單 -->
+      <div id="issues" class="issues" tabindex="-1"></div>
+      <!-- 底部重新檢測 -->
+      <footer class="results-footer">
+        <button id="btn-rescan" class="btn btn-secondary" type="button">重新檢測</button>
+      </footer>
+    </section>
+
+    <!-- 狀態四：錯誤／無法檢測 -->
+    <section id="view-error" class="view view-center" hidden>
+      <p id="error-title" class="error-title"></p>
+      <p id="error-detail" class="error-detail"></p>
+      <button id="btn-retry" class="btn btn-secondary" type="button" hidden>重試</button>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

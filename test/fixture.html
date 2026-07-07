@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!-- 故意不設 lang（觸發 html-has-lang）、不設 <title>（觸發 document-title） -->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    section { margin-bottom: 32px; padding: 16px; border: 1px dashed #ccc; }
+    .low-contrast { color: #b9b9b9; background: #ffffff; } /* 對比約 1.8:1，觸發 color-contrast */
+    .fake-link { color: #444444; text-decoration: none; }  /* 與內文同色無底線，觸發 link-in-text-block */
+    .notice { background: #FEF3C7; padding: 12px; border: 2px solid #B45309; }
+  </style>
+</head>
+<body>
+  <p class="notice">
+    ⚠️ 這是 ramp-a11y 的<strong>測試素材頁</strong>：以下每一區都「故意」包含一種無障礙違規，
+    用來驗證對應表中的規則會被正確偵測、翻譯與定位。請勿作為實際網頁範本。
+  </p>
+
+  <h1>ramp-a11y 檢測規則測試頁</h1>
+
+  <section>
+    <!-- heading-order：h1 之後直接跳 h4 -->
+    <h4>1. 標題跳階（heading-order）</h4>
+    <p>上面這個標題從 h1 直接跳到 h4。</p>
+  </section>
+
+  <section>
+    <h2>2. 對比不足（color-contrast）</h2>
+    <p class="low-contrast">這段淺灰色文字與白色背景的對比只有約 1.8:1。</p>
+  </section>
+
+  <section>
+    <h2>3. 圖片缺少替代文字（image-alt）</h2>
+    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" width="60" height="60" style="background:#0F766E" />
+  </section>
+
+  <section>
+    <h2>4. 表單欄位缺少標籤（label）</h2>
+    <input type="text" placeholder="這個欄位沒有 label" />
+  </section>
+
+  <section>
+    <h2>5. 連結沒有可辨識文字（link-name）</h2>
+    <a href="https://example.com"><span style="display:inline-block;width:24px;height:24px;background:#1D4ED8"></span></a>
+  </section>
+
+  <section>
+    <h2>6. 按鈕沒有可辨識名稱（button-name）</h2>
+    <button type="button"></button>
+  </section>
+
+  <section>
+    <h2>7. 清單結構不正確（list）</h2>
+    <ul>
+      <div>這個 div 不該直接放在 ul 裡</div>
+      <li>正常的項目</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. iframe 缺少標題（frame-title）</h2>
+    <iframe src="about:blank" width="200" height="60"></iframe>
+  </section>
+
+  <section>
+    <h2>9. ARIA 缺少必要屬性（aria-required-attr）</h2>
+    <div role="checkbox" tabindex="0">自訂核取方塊，缺 aria-checked</div>
+  </section>
+
+  <section>
+    <h2>10. ARIA 屬性值無效（aria-valid-attr-value）</h2>
+    <div aria-live="loud">aria-live 沒有 loud 這個值</div>
+  </section>
+
+  <section>
+    <h2>11. 重複的 id（duplicate-id）</h2>
+    <div id="dup-plain">第一個 dup-plain</div>
+    <div id="dup-plain">第二個 dup-plain</div>
+  </section>
+
+  <section>
+    <h2>12. ARIA／標籤參照的 id 重複（duplicate-id-aria）</h2>
+    <label for="dup-ref">姓名</label>
+    <input id="dup-ref" type="text" />
+    <span id="dup-ref">另一個同名 id 的元素</span>
+  </section>
+
+  <section>
+    <h2>13. 連結僅以顏色區辨（link-in-text-block）</h2>
+    <p style="color:#444444">
+      這段文字中有一個 <a class="fake-link" href="https://example.com">看不出是連結的連結</a>，
+      沒有底線、顏色又與內文幾乎相同。
+    </p>
+  </section>
+
+  <!--
+    未含在此頁的對應規則：
+    - document-title / html-has-lang：由本頁「缺少」的 <title> 與 lang 屬性觸發
+    - focus-visible：無對應 axe 自動化規則，一律人工檢測（用 Tab 鍵實測本頁即可）
+  -->
+</body>
+</html>
