@@ -4,9 +4,11 @@
   "private": true,
   "description": "Ramp — 網頁無障礙檢測 Chrome 擴充套件（對應台灣「網站無障礙規範」）",
   "scripts": {
-    "test": "node test/e2e/run-e2e.js"
+    "test": "node test/e2e/run-e2e.js",
+    "pack": "node scripts/pack.js"
   },
   "devDependencies": {
+    "adm-zip": "^0.5.18",
     "puppeteer-core": "^24.0.0"
   }
 }

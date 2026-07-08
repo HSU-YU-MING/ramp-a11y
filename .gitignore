@@ -7,6 +7,9 @@ node_modules/
 # E2E 測試輸出（截圖等）
 test/e2e/output/
 
+# 上架打包輸出
+dist/
+
 # 作業系統雜項
 Thumbs.db
 .DS_Store
