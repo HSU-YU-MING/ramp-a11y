@@ -145,6 +145,21 @@ async function openPopup(browser, sw) {
     check('T3d link-in-text-block 有出現', titles.includes('連結僅以顏色區辨'));
     await popup.screenshot({ path: OUT + '/popup-results.png' });
 
+    // ===== T9：匯出報告（攔截下載並驗證內容）=====
+    const dlClient = await popup.target().createCDPSession();
+    await dlClient.send('Browser.setDownloadBehavior', {
+      behavior: 'allow', downloadPath: OUT, eventsEnabled: true,
+    });
+    await popup.click('#btn-export');
+    await sleep(1500);
+    const reportFile = fs.readdirSync(OUT).find((f) => f.startsWith('ramp-a11y-report-') && f.endsWith('.html'));
+    let reportOk = false;
+    if (reportFile) {
+      const html = fs.readFileSync(path.join(OUT, reportFile), 'utf8');
+      reportOk = html.includes('Ramp 無障礙檢測報告') && html.includes('等級 A') && html.includes('限制聲明');
+    }
+    check('T9 匯出報告產生且內容正確', reportOk, reportFile || '無下載檔案');
+
     // ===== T4：展開＋點擊元素 → 頁面高亮 =====
     await popup.click('.issue-header');
     await sleep(200);

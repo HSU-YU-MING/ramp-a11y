@@ -25,10 +25,12 @@ const errorDetailEl = document.getElementById('error-detail');
 const btnScan = document.getElementById('btn-scan');
 const btnRescan = document.getElementById('btn-rescan');
 const btnRetry = document.getElementById('btn-retry');
+const btnExport = document.getElementById('btn-export');
 
 // ===== 全域狀態 =====
 let rulesMap = new Map(); // axeRuleId → 對應表項目
 let currentTabId = null;  // 當前掃描的分頁 id
+let lastScan = null;      // 最後一次掃描 { result, url, ts }，供報告匯出
 
 // 等級顯示順序與標籤
 const LEVEL_ORDER = ['A', 'AA', 'AAA'];
@@ -156,12 +158,13 @@ async function runScan() {
       return;
     }
 
+    lastScan = { result, url: tab.url, ts: Date.now() };
     renderResults(result, null);
 
     // 快取本次結果：popup 關閉後重開可直接還原，不必重掃
     try {
       await chrome.storage.session.set({
-        ['scan_' + tab.id]: { url: tab.url, ts: Date.now(), result },
+        ['scan_' + tab.id]: { url: tab.url, ts: lastScan.ts, result },
       });
     } catch {
       // 快取失敗不影響主流程
@@ -314,13 +317,20 @@ function issueHtml(item, badgeClass, badgeText) {
  * @param {object} result   掃描結果（violations / incomplete）
  * @param {number|null} cachedTs 若為快取還原，傳入原掃描時間戳；即時掃描傳 null
  */
-function renderResults(result, cachedTs) {
+/**
+ * 將掃描結果轉譯並分流（渲染與報告匯出共用）。
+ * 最佳實務建議並非 WCAG 失敗項，不計入「違規」。
+ */
+function classifyResults(result) {
   const all = result.violations.map(translateRule);
   const incomplete = sortByImpact(result.incomplete.map(translateRule));
-
-  // 分流：最佳實務建議並非 WCAG 失敗項，不計入「違規」
   const bestPractice = sortByImpact(all.filter((v) => !v.mapped && v.isBestPractice));
   const violations = all.filter((v) => v.mapped || !v.isBestPractice);
+  return { violations, bestPractice, incomplete };
+}
+
+function renderResults(result, cachedTs) {
+  const { violations, bestPractice, incomplete } = classifyResults(result);
 
   renderStats(violations, bestPractice.length, incomplete.length);
 
@@ -410,11 +420,143 @@ async function highlightOnPage(selector) {
   }
 }
 
+// ===== 報告匯出 =====
+
+/** 報告中的單一問題區塊 */
+function reportIssueHtml(item, badgeText) {
+  const impactText = item.impact
+    ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
+    : '';
+  const meta = item.mapped
+    ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}`
+    : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
+
+  const nodes = item.nodes
+    .map((n) => `<li><code>${escapeHtml(n.target)}</code>${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`)
+    .join('');
+  const more = item.nodeCount > item.nodes.length
+    ? `<p class="more">（共 ${item.nodeCount} 個受影響元素，僅列出前 ${item.nodes.length} 個）</p>`
+    : '';
+
+  return `
+  <section class="issue">
+    <h3><span class="badge">${escapeHtml(badgeText)}</span>${escapeHtml(item.title)}</h3>
+    <p class="meta">${meta}</p>
+    ${item.why ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>` : ''}
+    ${item.how ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>` : ''}
+    <p><strong>受影響元素（${item.nodeCount}）：</strong></p>
+    <ul class="nodes">${nodes}</ul>
+    ${more}
+  </section>`;
+}
+
+/** 產生自包含的 HTML 檢測報告（可直接以瀏覽器開啟、列印轉 PDF） */
+function buildReportHtml(scan) {
+  const { violations, bestPractice, incomplete } = classifyResults(scan.result);
+  const levelCounts = { A: 0, AA: 0, AAA: 0 };
+  let unmappedCount = 0;
+  violations.forEach((v) => {
+    if (v.mapped) levelCounts[v.level] += 1;
+    else unmappedCount += 1;
+  });
+
+  let body = '';
+  LEVEL_ORDER.forEach((level) => {
+    const group = sortByImpact(violations.filter((v) => v.mapped && v.level === level));
+    if (group.length === 0) return;
+    body += `<h2>等級 ${level}（${group.length} 項）</h2>` + group.map((v) => reportIssueHtml(v, level)).join('');
+  });
+  const unmapped = sortByImpact(violations.filter((v) => !v.mapped));
+  if (unmapped.length) {
+    body += `<h2>其他 WCAG 項目（未對應台灣準則，${unmapped.length} 項）</h2>` + unmapped.map((v) => reportIssueHtml(v, '其他')).join('');
+  }
+  if (bestPractice.length) {
+    body += `<h2>最佳實務建議（非規範必要，${bestPractice.length} 項）</h2>` + bestPractice.map((v) => reportIssueHtml(v, '建議')).join('');
+  }
+  if (incomplete.length) {
+    body += `<h2>需人工複核（${incomplete.length} 項）</h2>` + incomplete.map((v) => reportIssueHtml(v, '複核')).join('');
+  }
+  if (!violations.length && !incomplete.length) {
+    body += '<p>未發現自動化可偵測的違規。自動化檢測僅涵蓋部分無障礙問題，仍需人工複核。</p>';
+  }
+
+  const version = chrome.runtime.getManifest().version;
+  const time = new Date(scan.ts).toLocaleString('zh-TW');
+
+  return `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ramp 無障礙檢測報告 — ${escapeHtml(scan.url)}</title>
+<style>
+  body { font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+         max-width: 860px; margin: 0 auto; padding: 24px; color: #1F2937; line-height: 1.7; }
+  header { border-bottom: 3px solid #0F766E; padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 22px; color: #0F766E; }
+  h2 { font-size: 17px; margin: 28px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #E5E7EB; }
+  .info, .meta, .more { color: #4B5563; font-size: 13px; }
+  table.stats { border-collapse: collapse; margin: 12px 0; }
+  table.stats th, table.stats td { border: 1px solid #E5E7EB; padding: 6px 14px; font-size: 14px; }
+  table.stats th { background: #F9FAFB; }
+  .issue { border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 16px; margin: 10px 0;
+           page-break-inside: avoid; }
+  .issue h3 { font-size: 15px; margin-bottom: 4px; }
+  .badge { display: inline-block; background: #374151; color: #fff; border-radius: 999px;
+           font-size: 12px; padding: 1px 10px; margin-right: 8px; vertical-align: middle; }
+  .nodes { margin-left: 20px; }
+  .nodes code { font-size: 12px; word-break: break-all; }
+  .nodes pre { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 4px;
+               padding: 4px 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; margin: 2px 0 8px; }
+  .disclaimer { margin-top: 32px; padding: 12px 16px; background: #FEF9C3; border-radius: 8px;
+                font-size: 13px; color: #713F12; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ramp 無障礙檢測報告</h1>
+  <p class="info">檢測網址：${escapeHtml(scan.url)}<br>
+  檢測時間：${escapeHtml(time)}<br>
+  工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core 4.10.3・對應台灣「網站無障礙規範」（110.07 版，對齊 WCAG 2.1）</p>
+</header>
+<table class="stats">
+  <tr><th>違規總數</th><th>等級 A</th><th>等級 AA</th><th>等級 AAA</th><th>未對應</th><th>最佳實務建議</th><th>需人工複核</th></tr>
+  <tr><td>${violations.length}</td><td>${levelCounts.A}</td><td>${levelCounts.AA}</td><td>${levelCounts.AAA}</td><td>${unmappedCount}</td><td>${bestPractice.length}</td><td>${incomplete.length}</td></tr>
+</table>
+${body}
+<div class="disclaimer">
+  <strong>限制聲明：</strong>自動化檢測僅能涵蓋約三到四成的無障礙問題，本報告不等同官方無障礙標章認證，
+  鍵盤操作動線、報讀軟體實際體驗、替代文字是否恰當等仍需人工複核。
+</div>
+</body>
+</html>`;
+}
+
+/** 匯出報告：產生 HTML 檔並觸發下載 */
+function exportReport() {
+  if (!lastScan) return;
+  const html = buildReportHtml(lastScan);
+  let host = '';
+  try { host = new URL(lastScan.url).hostname.replace(/[^\w.-]/g, ''); } catch { /* 保持空字串 */ }
+  const d = new Date(lastScan.ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  const filename = `ramp-a11y-report-${host}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.html`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 // ===== 事件繫結 =====
 
 btnScan.addEventListener('click', runScan);
 btnRescan.addEventListener('click', runScan);
 btnRetry.addEventListener('click', runScan);
+btnExport.addEventListener('click', exportReport);
 
 // popup 開啟時：
 //  1. 受保護頁面直接顯示「無法檢測」，不給一顆註定失敗的按鈕
@@ -437,6 +579,7 @@ btnRetry.addEventListener('click', runScan);
     if (cached && cached.url === tab.url && cached.result) {
       await loadRulesMap();
       currentTabId = tab.id;
+      lastScan = { result: cached.result, url: cached.url, ts: cached.ts };
       renderResults(cached.result, cached.ts);
     }
   } catch {
