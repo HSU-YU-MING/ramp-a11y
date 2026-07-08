@@ -2,6 +2,7 @@
   {
     "axeRuleId": "aria-meter-name",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "計量元件沒有無障礙名稱",
@@ -11,6 +12,7 @@
   {
     "axeRuleId": "aria-progressbar-name",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "進度條沒有無障礙名稱",
@@ -20,6 +22,7 @@
   {
     "axeRuleId": "image-alt",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "圖片缺少替代文字",
@@ -29,6 +32,7 @@
   {
     "axeRuleId": "input-image-alt",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "圖片按鈕缺少替代文字",
@@ -38,6 +42,7 @@
   {
     "axeRuleId": "object-alt",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "<object> 缺少替代文字",
@@ -47,6 +52,7 @@
   {
     "axeRuleId": "role-img-alt",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "role=\"img\" 元素缺少替代文字",
@@ -56,6 +62,7 @@
   {
     "axeRuleId": "svg-img-alt",
     "twGuideline": "1.1.1",
+    "twGuidelineName": "非文字內容",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "SVG 圖片缺少替代文字",
@@ -65,6 +72,7 @@
   {
     "axeRuleId": "video-caption",
     "twGuideline": "1.2.2",
+    "twGuidelineName": "字幕(預錄)",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "影片缺少字幕",
@@ -74,6 +82,7 @@
   {
     "axeRuleId": "aria-hidden-body",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "<body> 被設為 aria-hidden",
@@ -83,6 +92,7 @@
   {
     "axeRuleId": "aria-required-children",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "ARIA 角色缺少必要的子角色",
@@ -92,6 +102,7 @@
   {
     "axeRuleId": "aria-required-parent",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "ARIA 角色缺少必要的父角色",
@@ -101,6 +112,7 @@
   {
     "axeRuleId": "definition-list",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "定義清單結構不正確",
@@ -110,6 +122,7 @@
   {
     "axeRuleId": "dlitem",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "<dt>/<dd> 不在 <dl> 內",
@@ -119,6 +132,7 @@
   {
     "axeRuleId": "heading-order",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "標題階層順序錯亂",
@@ -128,6 +142,7 @@
   {
     "axeRuleId": "list",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "清單結構不正確",
@@ -137,6 +152,7 @@
   {
     "axeRuleId": "listitem",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "<li> 不在清單容器內",
@@ -146,6 +162,7 @@
   {
     "axeRuleId": "p-as-heading",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "用樣式化段落假裝標題",
@@ -155,6 +172,7 @@
   {
     "axeRuleId": "table-fake-caption",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "用儲存格假裝表格標題",
@@ -164,6 +182,7 @@
   {
     "axeRuleId": "td-has-header",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "大型表格的儲存格缺少表頭",
@@ -173,6 +192,7 @@
   {
     "axeRuleId": "td-headers-attr",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "儲存格的 headers 參照錯誤",
@@ -182,6 +202,7 @@
   {
     "axeRuleId": "th-has-data-cells",
     "twGuideline": "1.3.1",
+    "twGuidelineName": "資訊與關連性",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "表頭沒有對應的資料儲存格",
@@ -191,6 +212,7 @@
   {
     "axeRuleId": "css-orientation-lock",
     "twGuideline": "1.3.4",
+    "twGuidelineName": "螢幕方向",
     "twLevel": "AA",
     "category": "可感知",
     "titleZh": "CSS 鎖定了螢幕方向",
@@ -200,6 +222,7 @@
   {
     "axeRuleId": "autocomplete-valid",
     "twGuideline": "1.3.5",
+    "twGuidelineName": "識別輸入目的",
     "twLevel": "AA",
     "category": "可感知",
     "titleZh": "autocomplete 屬性使用不正確",
@@ -209,6 +232,7 @@
   {
     "axeRuleId": "link-in-text-block",
     "twGuideline": "1.4.1",
+    "twGuidelineName": "色彩使用",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "連結僅以顏色區辨",
@@ -218,6 +242,7 @@
   {
     "axeRuleId": "no-autoplay-audio",
     "twGuideline": "1.4.2",
+    "twGuidelineName": "音訊控制",
     "twLevel": "A",
     "category": "可感知",
     "titleZh": "音訊自動播放且無法控制",
@@ -227,6 +252,7 @@
   {
     "axeRuleId": "color-contrast",
     "twGuideline": "1.4.3",
+    "twGuidelineName": "對比值(最小)",
     "twLevel": "AA",
     "category": "可感知",
     "titleZh": "文字與背景對比不足",
@@ -236,6 +262,7 @@
   {
     "axeRuleId": "meta-viewport",
     "twGuideline": "1.4.4",
+    "twGuidelineName": "調整文字尺寸",
     "twLevel": "AA",
     "category": "可感知",
     "titleZh": "viewport 禁止使用者縮放",
@@ -245,6 +272,7 @@
   {
     "axeRuleId": "color-contrast-enhanced",
     "twGuideline": "1.4.6",
+    "twGuidelineName": "對比值(增強)",
     "twLevel": "AAA",
     "category": "可感知",
     "titleZh": "文字對比未達 AAA 增強標準",
@@ -254,6 +282,7 @@
   {
     "axeRuleId": "avoid-inline-spacing",
     "twGuideline": "1.4.12",
+    "twGuidelineName": "文字間距",
     "twLevel": "AA",
     "category": "可感知",
     "titleZh": "行內樣式鎖死文字間距",
@@ -263,6 +292,7 @@
   {
     "axeRuleId": "frame-focusable-content",
     "twGuideline": "2.1.1",
+    "twGuidelineName": "鍵盤",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "tabindex=-1 的框架內含可聚焦內容",
@@ -272,6 +302,7 @@
   {
     "axeRuleId": "scrollable-region-focusable",
     "twGuideline": "2.1.1",
+    "twGuidelineName": "鍵盤",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "可捲動區域無法用鍵盤操作",
@@ -281,6 +312,7 @@
   {
     "axeRuleId": "server-side-image-map",
     "twGuideline": "2.1.1",
+    "twGuidelineName": "鍵盤",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "使用了伺服器端影像地圖",
@@ -290,6 +322,7 @@
   {
     "axeRuleId": "meta-refresh",
     "twGuideline": "2.2.1",
+    "twGuidelineName": "計時調整",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "頁面自動重新整理或轉址",
@@ -299,6 +332,7 @@
   {
     "axeRuleId": "blink",
     "twGuideline": "2.2.2",
+    "twGuidelineName": "暫停、停止和隱藏",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "使用了 <blink> 閃爍元素",
@@ -308,6 +342,7 @@
   {
     "axeRuleId": "marquee",
     "twGuideline": "2.2.2",
+    "twGuidelineName": "暫停、停止和隱藏",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "使用了 <marquee> 跑馬燈元素",
@@ -317,6 +352,7 @@
   {
     "axeRuleId": "meta-refresh-no-exceptions",
     "twGuideline": "2.2.4",
+    "twGuidelineName": "中斷",
     "twLevel": "AAA",
     "category": "可操作",
     "titleZh": "頁面使用計時自動重新整理（AAA）",
@@ -326,6 +362,7 @@
   {
     "axeRuleId": "bypass",
     "twGuideline": "2.4.1",
+    "twGuidelineName": "跳過區塊",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "頁面缺少略過重複區塊的機制",
@@ -335,6 +372,7 @@
   {
     "axeRuleId": "document-title",
     "twGuideline": "2.4.2",
+    "twGuidelineName": "網頁標題",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "網頁缺少標題",
@@ -344,6 +382,7 @@
   {
     "axeRuleId": "area-alt",
     "twGuideline": "2.4.4",
+    "twGuidelineName": "鏈結目的(脈絡)",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "影像地圖區域缺少替代文字",
@@ -353,6 +392,7 @@
   {
     "axeRuleId": "link-name",
     "twGuideline": "2.4.4",
+    "twGuidelineName": "鏈結目的(脈絡)",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "連結沒有可辨識文字",
@@ -362,6 +402,7 @@
   {
     "axeRuleId": "focus-visible",
     "twGuideline": "2.4.7",
+    "twGuidelineName": "焦點可視",
     "twLevel": "AA",
     "category": "可操作",
     "titleZh": "鍵盤焦點不明顯",
@@ -371,6 +412,7 @@
   {
     "axeRuleId": "identical-links-same-purpose",
     "twGuideline": "2.4.9",
+    "twGuidelineName": "鏈結目的(僅鏈結)",
     "twLevel": "AAA",
     "category": "可操作",
     "titleZh": "同名連結指向不同目的",
@@ -380,6 +422,7 @@
   {
     "axeRuleId": "label-content-name-mismatch",
     "twGuideline": "2.5.3",
+    "twGuidelineName": "標籤名稱",
     "twLevel": "A",
     "category": "可操作",
     "titleZh": "可見文字與無障礙名稱不一致",
@@ -389,6 +432,7 @@
   {
     "axeRuleId": "html-has-lang",
     "twGuideline": "3.1.1",
+    "twGuidelineName": "網頁語言",
     "twLevel": "A",
     "category": "可理解",
     "titleZh": "未標示網頁語言",
@@ -398,6 +442,7 @@
   {
     "axeRuleId": "html-lang-valid",
     "twGuideline": "3.1.1",
+    "twGuidelineName": "網頁語言",
     "twLevel": "A",
     "category": "可理解",
     "titleZh": "網頁語言代碼無效",
@@ -407,6 +452,7 @@
   {
     "axeRuleId": "html-xml-lang-mismatch",
     "twGuideline": "3.1.1",
+    "twGuidelineName": "網頁語言",
     "twLevel": "A",
     "category": "可理解",
     "titleZh": "lang 與 xml:lang 語言不一致",
@@ -416,6 +462,7 @@
   {
     "axeRuleId": "valid-lang",
     "twGuideline": "3.1.2",
+    "twGuidelineName": "局部語言",
     "twLevel": "AA",
     "category": "可理解",
     "titleZh": "局部語言標示無效",
@@ -425,6 +472,7 @@
   {
     "axeRuleId": "form-field-multiple-labels",
     "twGuideline": "3.3.2",
+    "twGuidelineName": "標籤或說明",
     "twLevel": "A",
     "category": "可理解",
     "titleZh": "表單欄位有多個標籤",
@@ -434,6 +482,7 @@
   {
     "axeRuleId": "duplicate-id",
     "twGuideline": "4.1.1",
+    "twGuidelineName": "語法分析",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "出現重複的 id",
@@ -443,6 +492,7 @@
   {
     "axeRuleId": "aria-allowed-attr",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "元素使用了不支援的 ARIA 屬性",
@@ -452,6 +502,7 @@
   {
     "axeRuleId": "aria-braille-equivalent",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "點字標籤缺少對應的一般名稱",
@@ -461,6 +512,7 @@
   {
     "axeRuleId": "aria-command-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 指令元素沒有無障礙名稱",
@@ -470,6 +522,7 @@
   {
     "axeRuleId": "aria-conditional-attr",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 屬性未依角色規定使用",
@@ -479,6 +532,7 @@
   {
     "axeRuleId": "aria-deprecated-role",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "使用了已棄用的 ARIA 角色",
@@ -488,6 +542,7 @@
   {
     "axeRuleId": "aria-hidden-focus",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "aria-hidden 元素仍可被聚焦",
@@ -497,6 +552,7 @@
   {
     "axeRuleId": "aria-input-field-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 輸入欄位沒有無障礙名稱",
@@ -506,6 +562,7 @@
   {
     "axeRuleId": "aria-prohibited-attr",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "元素使用了被禁止的 ARIA 屬性",
@@ -515,6 +572,7 @@
   {
     "axeRuleId": "aria-required-attr",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 缺少必要屬性",
@@ -524,6 +582,7 @@
   {
     "axeRuleId": "aria-roles",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 角色值無效",
@@ -533,6 +592,7 @@
   {
     "axeRuleId": "aria-toggle-field-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 切換元件沒有無障礙名稱",
@@ -542,6 +602,7 @@
   {
     "axeRuleId": "aria-tooltip-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "工具提示沒有無障礙名稱",
@@ -551,6 +612,7 @@
   {
     "axeRuleId": "aria-valid-attr",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 屬性名稱無效",
@@ -560,6 +622,7 @@
   {
     "axeRuleId": "aria-valid-attr-value",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 屬性值無效",
@@ -569,6 +632,7 @@
   {
     "axeRuleId": "button-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "按鈕沒有可辨識名稱",
@@ -578,6 +642,7 @@
   {
     "axeRuleId": "duplicate-id-aria",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "ARIA 與標籤參照的 id 重複",
@@ -587,6 +652,7 @@
   {
     "axeRuleId": "frame-title",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "iframe 缺少標題",
@@ -596,6 +662,7 @@
   {
     "axeRuleId": "frame-title-unique",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "多個 iframe 使用相同標題",
@@ -605,6 +672,7 @@
   {
     "axeRuleId": "input-button-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "輸入型按鈕沒有可辨識文字",
@@ -614,6 +682,7 @@
   {
     "axeRuleId": "label",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "表單欄位缺少標籤",
@@ -623,6 +692,7 @@
   {
     "axeRuleId": "nested-interactive",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "互動元件互相嵌套",
@@ -632,6 +702,7 @@
   {
     "axeRuleId": "select-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "下拉選單沒有無障礙名稱",
@@ -641,6 +712,7 @@
   {
     "axeRuleId": "summary-name",
     "twGuideline": "4.1.2",
+    "twGuidelineName": "名稱、角色和值",
     "twLevel": "A",
     "category": "強健",
     "titleZh": "<summary> 沒有可辨識文字",

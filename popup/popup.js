@@ -214,6 +214,7 @@ function translateRule(rule) {
       level: map.twLevel,
       title: map.titleZh,
       guideline: map.twGuideline,
+      guidelineName: map.twGuidelineName || '',
       category: map.category,
       why: map.whyZh,
       how: map.howZh,
@@ -275,7 +276,7 @@ function issueHtml(item, badgeClass, badgeText) {
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
   const guidelineHtml = item.mapped
-    ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}</p>`
+    ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}</p>`
     : `<p class="guideline">${
         item.isBestPractice
           ? '最佳實務建議（非台灣規範必要項目）'
@@ -428,7 +429,7 @@ function reportIssueHtml(item, badgeText) {
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
   const meta = item.mapped
-    ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}`
+    ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}`
     : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
 
   const nodes = item.nodes

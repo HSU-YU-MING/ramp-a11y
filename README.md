@@ -105,6 +105,14 @@ npm test        # 需本機安裝 Chrome；可用 CHROME_PATH 環境變數指定
 - 台灣規範仍沿用 WCAG 4.1.1（剖析），因此本工具明確重新啟用 axe 4.10 已預設停用的 `duplicate-id` 規則。
 - 準則 2.4.7「焦點可見」沒有對應的 axe 自動化規則，鍵盤焦點是否明顯**一律需要人工檢測**（對應表保留該條目作為規範文件用途）。
 
+## 參考文件
+
+- [docs/tw-web-accessibility-spec-110.pdf](docs/tw-web-accessibility-spec-110.pdf)：「網站無障礙規範」（110 年版）官方全文，
+  取自[植根法律網收錄版本](https://www.rootlaw.com.tw/Attach/L-Doc/A040410001016300-1100318-1000-001.pdf)。
+  對應表中的準則編號、官方準則名稱（`twGuidelineName`）與檢測等級均以此文件為準。
+- 規範的檢測碼末碼區分 **C（可用軟體檢測）** 與 **E（人工稽核評量）**，
+  本工具的「自動化違規／需人工複核」分流即對應此制度；官方檢測工具 Freego 的報告欄位（軟體／人工）亦同。
+
 ## 授權與致謝
 
 - 檢測引擎：[axe-core](https://github.com/dequelabs/axe-core) **v4.10.3**（MPL-2.0），以本地檔案形式打包於 `vendor/axe.min.js`。升級 axe 版本時請一併校對 `data/rules-map.json` 的規則異動。

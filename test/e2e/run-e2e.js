@@ -150,15 +150,22 @@ async function openPopup(browser, sw) {
     await dlClient.send('Browser.setDownloadBehavior', {
       behavior: 'allow', downloadPath: OUT, eventsEnabled: true,
     });
+    // 只認本次新產生的報告檔，避免上次執行的殘留檔造成誤判
+    const isReport = (f) => f.startsWith('ramp-a11y-report-') && f.endsWith('.html');
+    const before = new Set(fs.readdirSync(OUT).filter(isReport));
     await popup.click('#btn-export');
     await sleep(1500);
-    const reportFile = fs.readdirSync(OUT).find((f) => f.startsWith('ramp-a11y-report-') && f.endsWith('.html'));
+    const reportFile = fs.readdirSync(OUT).filter(isReport).find((f) => !before.has(f));
     let reportOk = false;
     if (reportFile) {
       const html = fs.readFileSync(path.join(OUT, reportFile), 'utf8');
-      reportOk = html.includes('Ramp 無障礙檢測報告') && html.includes('等級 A') && html.includes('限制聲明');
+      reportOk =
+        html.includes('Ramp 無障礙檢測報告') &&
+        html.includes('等級 A') &&
+        html.includes('限制聲明') &&
+        html.includes('對比值(最小)'); // 官方準則名稱有進報告
     }
-    check('T9 匯出報告產生且內容正確', reportOk, reportFile || '無下載檔案');
+    check('T9 匯出報告產生且內容正確', reportOk, reportFile || '無新下載檔案');
 
     // ===== T4：展開＋點擊元素 → 頁面高亮 =====
     await popup.click('.issue-header');
