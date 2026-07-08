@@ -7,7 +7,9 @@
     body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
     section { margin-bottom: 32px; padding: 16px; border: 1px dashed #ccc; }
     .low-contrast { color: #b9b9b9; background: #ffffff; } /* 對比約 1.8:1，觸發 color-contrast */
-    .fake-link { color: #444444; text-decoration: none; }  /* 與內文同色無底線，觸發 link-in-text-block */
+    /* 與內文顏色略異但對比不足、無底線 → 觸發 link-in-text-block
+       （注意：顏色「完全相同」時 axe 會視為一般文字而 pass，必須略有差異） */
+    .fake-link { color: #555566; text-decoration: none; }
     .notice { background: #FEF3C7; padding: 12px; border: 2px solid #B45309; }
   </style>
 </head>
@@ -37,7 +39,8 @@
 
   <section>
     <h2>4. 表單欄位缺少標籤（label）</h2>
-    <input type="text" placeholder="這個欄位沒有 label" />
+    <p>下面的輸入框沒有任何標籤（注意：placeholder 也算無障礙名稱來源，所以連 placeholder 都不能放）：</p>
+    <input type="text" />
   </section>
 
   <section>
@@ -89,8 +92,11 @@
   <section>
     <h2>13. 連結僅以顏色區辨（link-in-text-block）</h2>
     <p style="color:#444444">
-      這段文字中有一個 <a class="fake-link" href="https://example.com">看不出是連結的連結</a>，
-      沒有底線、顏色又與內文幾乎相同。
+      這是一個比較長的段落，用來滿足 axe 對「文字區塊」的判定條件。無障礙設計要求連結
+      必須能以顏色以外的方式與一般文字區分，例如底線、粗體或圖示。然而在這段文字中有一個
+      <a class="fake-link" href="https://example.com">看不出是連結的連結</a>，它沒有底線、
+      顏色與內文的差異又小到難以察覺，色覺障礙的使用者完全無法發現這裡可以點擊，一般使用者
+      也很難注意到它的存在。這正是 1.4.1「使用色彩」準則要避免的情況。
     </p>
   </section>
 

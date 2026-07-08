@@ -43,11 +43,13 @@
 
 ## 功能截圖
 
-> （截圖佔位：初始畫面）
->
-> （截圖佔位：檢測結果面板 — 依等級分組與統計列）
->
-> （截圖佔位：點擊元素後在頁面上高亮定位）
+| 初始畫面 | 檢測結果（分組＋統計列） |
+|---|---|
+| ![初始畫面](docs/screenshots/popup-initial.png) | ![檢測結果](docs/screenshots/popup-results.png) |
+
+| 快取還原提示 | 點擊元素在頁面上高亮定位 |
+|---|---|
+| ![快取還原](docs/screenshots/popup-cache.png) | ![高亮定位](docs/screenshots/fixture-highlight.png) |
 
 ## 專案結構
 
