@@ -430,6 +430,17 @@
     "howZh": "讓 aria-label 包含元素的可見文字。"
   },
   {
+    "axeRuleId": "target-size",
+    "twGuideline": "2.5.8",
+    "twGuidelineName": "目標尺寸(最小)",
+    "twLevel": "AA",
+    "category": "可操作",
+    "titleZh": "可點擊目標尺寸不足",
+    "whyZh": "過小的按鈕或鏈結，手部顫抖、行動不便或以觸控操作的使用者難以準確點擊。",
+    "howZh": "讓指標輸入目標至少 24×24 CSS 像素，或與相鄰目標保持足夠間距。",
+    "noteZh": "115 年修正版（對齊 WCAG 2.2）新增準則，自 115 年 11 月 30 日起適用；110.07 版檢測不含此條。"
+  },
+  {
     "axeRuleId": "html-has-lang",
     "twGuideline": "3.1.1",
     "twGuidelineName": "網頁語言",
@@ -486,8 +497,9 @@
     "twLevel": "A",
     "category": "強健",
     "titleZh": "出現重複的 id",
-    "whyZh": "重複的 id 會使標籤關聯、腳本與輔助科技的指向錯亂。（註：WCAG 2.2 已移除對應的 4.1.1「剖析」，但台灣現行規範仍沿用，故保留。）",
-    "howZh": "確保每個 id 在頁面中唯一。"
+    "whyZh": "重複的 id 會使標籤關聯、腳本與輔助科技的指向錯亂。",
+    "howZh": "確保每個 id 在頁面中唯一。",
+    "noteZh": "110.07 版（適用至 115 年 11 月 29 日）包含本準則 4.1.1「語法分析」；115 年修正版已將其刪除（因過時），自 115 年 11 月 30 日起不再列入檢測。"
   },
   {
     "axeRuleId": "aria-allowed-attr",

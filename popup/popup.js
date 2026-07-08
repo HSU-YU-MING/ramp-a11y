@@ -218,6 +218,7 @@ function translateRule(rule) {
       category: map.category,
       why: map.whyZh,
       how: map.howZh,
+      note: map.noteZh || null, // 版本差異等補充說明（如 115 年修正版的增刪）
     };
   }
   return {
@@ -229,6 +230,7 @@ function translateRule(rule) {
     category: null,
     why: rule.description,
     how: null,
+    note: null,
   };
 }
 
@@ -281,7 +283,7 @@ function issueHtml(item, badgeClass, badgeText) {
         item.isBestPractice
           ? '最佳實務建議（非台灣規範必要項目）'
           : item.isWcag22
-            ? 'WCAG 2.2 新增準則（台灣規範尚未採用）'
+            ? 'WCAG 2.2 新增準則（115 年修正版起適用）'
             : '未對應台灣規範準則'
       }・axe 規則：${escapeHtml(item.axeId)}${impactText}</p>`;
 
@@ -290,6 +292,9 @@ function issueHtml(item, badgeClass, badgeText) {
     : '';
   const howHtml = item.how
     ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>`
+    : '';
+  const noteHtml = item.note
+    ? `<p class="issue-note">※ ${escapeHtml(item.note)}</p>`
     : '';
 
   return `
@@ -305,6 +310,7 @@ function issueHtml(item, badgeClass, badgeText) {
         ${guidelineHtml}
         ${whyHtml}
         ${howHtml}
+        ${noteHtml}
         <p><strong>受影響元素（點擊可在頁面上定位）：</strong></p>
         <ul class="nodes">${nodesHtml}</ul>
         ${item.nodeCount > item.nodes.length ? `<p class="node-more">還有 ${item.nodeCount - item.nodes.length} 個元素未列出（僅顯示前 ${item.nodes.length} 個）</p>` : ''}
@@ -445,6 +451,7 @@ function reportIssueHtml(item, badgeText) {
     <p class="meta">${meta}</p>
     ${item.why ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>` : ''}
     ${item.how ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>` : ''}
+    ${item.note ? `<p class="more">※ ${escapeHtml(item.note)}</p>` : ''}
     <p><strong>受影響元素（${item.nodeCount}）：</strong></p>
     <ul class="nodes">${nodes}</ul>
     ${more}
@@ -518,7 +525,8 @@ function buildReportHtml(scan) {
   <h1>Ramp 無障礙檢測報告</h1>
   <p class="info">檢測網址：${escapeHtml(scan.url)}<br>
   檢測時間：${escapeHtml(time)}<br>
-  工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core 4.10.3・對應台灣「網站無障礙規範」（110.07 版，對齊 WCAG 2.1）</p>
+  工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core 4.10.3<br>
+  對應標準：台灣「網站無障礙規範」現行 110.07 版（對齊 WCAG 2.1）；115 年修正版（對齊 WCAG 2.2）自 115 年 11 月 30 日生效，版本差異條目已於內文附註</p>
 </header>
 <table class="stats">
   <tr><th>違規總數</th><th>等級 A</th><th>等級 AA</th><th>等級 AAA</th><th>未對應</th><th>最佳實務建議</th><th>需人工複核</th></tr>

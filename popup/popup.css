@@ -297,6 +297,12 @@ body {
   color: var(--color-text-muted);
 }
 
+/* 版本差異等補充附註（如 115 年修正版的準則增刪） */
+.issue-note {
+  font-size: 12px;
+  color: #92400E; /* amber-800，白底對比約 7:1 */
+}
+
 /* 受影響元素清單 */
 .nodes {
   list-style: none;
