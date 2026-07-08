@@ -201,6 +201,8 @@ function translateRule(rule) {
     impact: rule.impact || null,
     // best-practice 為 axe 的最佳實務建議，並非 WCAG 失敗項，需與違規分流
     isBestPractice: (rule.tags || []).includes('best-practice'),
+    // WCAG 2.2 新增準則：台灣規範（對齊 WCAG 2.1）尚未採用，需明確標示
+    isWcag22: (rule.tags || []).some((t) => /^wcag22a{1,3}$/.test(t)),
   };
   if (map) {
     return {
@@ -271,7 +273,13 @@ function issueHtml(item, badgeClass, badgeText) {
     : '';
   const guidelineHtml = item.mapped
     ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}</p>`
-    : `<p class="guideline">${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}</p>`;
+    : `<p class="guideline">${
+        item.isBestPractice
+          ? '最佳實務建議（非台灣規範必要項目）'
+          : item.isWcag22
+            ? 'WCAG 2.2 新增準則（台灣規範尚未採用）'
+            : '未對應台灣規範準則'
+      }・axe 規則：${escapeHtml(item.axeId)}${impactText}</p>`;
 
   const whyHtml = item.why
     ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>`
