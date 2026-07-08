@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Ramp",
-  "description": "網頁無障礙檢測工具：掃描當前頁面的 WCAG 問題，以繁體中文對應台灣「網站無障礙規範」說明與修正建議。",
+  "name": "Ramp 無障礙檢測",
+  "short_name": "Ramp",
+  "description": "一鍵檢測網頁無障礙問題，繁中解說並對應台灣「網站無障礙規範」準則與檢測碼。基於 axe-core，支援 WCAG 2.1/2.2。",
   "version": "0.1.0",
   "minimum_chrome_version": "102",
   "action": {
