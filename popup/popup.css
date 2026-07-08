@@ -6,25 +6,63 @@
 */
 
 :root {
+  color-scheme: light dark;
+
   /* 主色與文字 */
   --color-brand: #0F766E;        /* teal-700，與白字對比約 5.5:1 */
   --color-brand-dark: #115E59;
   --color-text: #1F2937;         /* gray-800 */
   --color-text-muted: #4B5563;   /* gray-600，與白底對比約 7:1 */
   --color-bg: #FFFFFF;
+  --color-card: #FFFFFF;         /* 卡片／按鈕底色 */
   --color-surface: #F9FAFB;
   --color-border: #E5E7EB;
 
-  /* 等級顏色系統（深色底＋白字，對比皆 ≥ 4.5:1） */
+  /* 語意色（文字用途，深色模式需改用淺色調以維持對比） */
+  --color-link: #1D4ED8;         /* blue-700 */
+  --color-danger: #B91C1C;       /* red-700 */
+  --color-success: #15803D;      /* green-700 */
+  --color-issue-note: #92400E;   /* amber-800，版本附註 */
+  --color-note-bg: #FEF9C3;      /* yellow-100，快取提示底 */
+  --color-note-text: #713F12;    /* yellow-900 */
+  --color-hover-brand: #F0FDFA;  /* 品牌色 hover 底 */
+  --color-active-brand: #CCFBF1; /* 品牌色 active 底 */
+  --color-btn-secondary: #0F766E;
+  --focus-color: #1D4ED8;
+
+  /* 等級顏色系統（深色底＋白字，對比皆 ≥ 4.5:1，深淺模式通用） */
   --color-level-a: #B91C1C;      /* red-700 */
   --color-level-aa: #B45309;     /* amber-700 */
   --color-level-aaa: #1D4ED8;    /* blue-700 */
   --color-review: #6D28D9;       /* violet-700，需人工複核 */
-  --color-unmapped: #374151;     /* gray-700，尚未在地化 */
-  --color-success: #15803D;      /* green-700 */
+  --color-unmapped: #374151;     /* gray-700，未對應 */
+  --color-bp: #475569;           /* slate-600，最佳實務建議 */
 
   --radius: 8px;
-  --focus-ring: 3px solid #1D4ED8;
+}
+
+/* ===== 深色模式（跟隨系統設定；所有文字對比維持 ≥ 4.5:1）===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #F3F4F6;         /* gray-100 */
+    --color-text-muted: #A6ADBB;   /* 對 gray-800 底約 6.5:1 */
+    --color-bg: #111827;           /* gray-900 */
+    --color-card: #111827;
+    --color-surface: #1F2937;      /* gray-800 */
+    --color-border: #374151;       /* gray-700 */
+    --color-link: #60A5FA;         /* blue-400 */
+    --color-danger: #F87171;       /* red-400 */
+    --color-success: #4ADE80;      /* green-400 */
+    --color-issue-note: #FCD34D;   /* amber-300 */
+    --color-note-bg: #451A03;      /* amber-950 */
+    --color-note-text: #FDE68A;    /* amber-200 */
+    --color-hover-brand: #134E4A;  /* teal-900 */
+    --color-active-brand: #115E59; /* teal-800 */
+    --color-btn-secondary: #5EEAD4;/* teal-300 */
+    --focus-color: #93C5FD;        /* blue-300 */
+    --color-unmapped: #4B5563;     /* gray-600，深底上較易辨識 */
+    --color-bp: #64748B;           /* slate-500，白字對比約 4.8:1 */
+  }
 }
 
 * {
@@ -50,7 +88,7 @@ body {
 
 /* 鍵盤焦點一律清楚可見（本工具自己要做到 2.4.7） */
 :focus-visible {
-  outline: var(--focus-ring);
+  outline: 3px solid var(--focus-color);
   outline-offset: 2px;
 }
 
@@ -124,13 +162,13 @@ body {
 }
 
 .btn-secondary {
-  background: #FFFFFF;
-  color: var(--color-brand);
-  border: 2px solid var(--color-brand);
+  background: var(--color-card);
+  color: var(--color-btn-secondary);
+  border: 2px solid var(--color-btn-secondary);
 }
 
 .btn-secondary:hover {
-  background: #F0FDFA;
+  background: var(--color-hover-brand);
 }
 
 /* ===== 載入中 ===== */
@@ -138,7 +176,8 @@ body {
   width: 36px;
   height: 36px;
   border: 4px solid var(--color-border);
-  border-top-color: var(--color-brand);
+  /* 淺色模式為品牌色 teal-700；深色模式用 teal-300 確保與深色邊框的區辨度 */
+  border-top-color: var(--color-btn-secondary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -185,10 +224,10 @@ body {
 .cache-note {
   flex-shrink: 0;
   padding: 8px 16px;
-  background: #FEF9C3; /* yellow-100 */
+  background: var(--color-note-bg);
   border-bottom: 1px solid var(--color-border);
   font-size: 12px;
-  color: #713F12; /* yellow-900，對比 > 7:1 */
+  color: var(--color-note-text); /* 兩種模式對比皆 > 7:1 */
 }
 
 /* 可捲動清單 */
@@ -223,7 +262,7 @@ body {
 .badge-AAA  { background: var(--color-level-aaa); }
 .badge-review   { background: var(--color-review); }
 .badge-unmapped { background: var(--color-unmapped); }
-.badge-bp       { background: #475569; } /* slate-600，最佳實務建議（非規範必要） */
+.badge-bp       { background: var(--color-bp); } /* 最佳實務建議（非規範必要） */
 
 /* 單一問題項目 */
 .issue {
@@ -239,7 +278,7 @@ body {
   gap: 8px;
   width: 100%;
   padding: 10px 12px;
-  background: #FFFFFF;
+  background: var(--color-card);
   border: none;
   font-family: inherit;
   font-size: 14px;
@@ -300,7 +339,7 @@ body {
 /* 版本差異等補充附註（如 115 年修正版的準則增刪） */
 .issue-note {
   font-size: 12px;
-  color: #92400E; /* amber-800，白底對比約 7:1 */
+  color: var(--color-issue-note); /* 兩種模式對比皆 ≥ 7:1 */
 }
 
 /* 受影響元素清單 */
@@ -317,7 +356,7 @@ body {
   display: block;
   width: 100%;
   padding: 6px 8px;
-  background: #FFFFFF;
+  background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   font-family: Consolas, "Courier New", monospace;
@@ -330,13 +369,13 @@ body {
 }
 
 .node-btn:hover {
-  border-color: var(--color-brand);
-  background: #F0FDFA;
+  border-color: var(--color-btn-secondary);
+  background: var(--color-hover-brand);
 }
 
 .node-btn.active {
-  border-color: var(--color-brand);
-  background: #CCFBF1;
+  border-color: var(--color-btn-secondary);
+  background: var(--color-active-brand);
 }
 
 /* 受影響元素的 HTML 原始片段 */
@@ -365,7 +404,7 @@ body {
 
 .help-link {
   font-size: 12px;
-  color: var(--color-level-aaa);
+  color: var(--color-link);
 }
 
 /* 無違規的正向訊息 */
@@ -393,7 +432,7 @@ body {
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--color-border);
-  background: #FFFFFF;
+  background: var(--color-card);
 }
 
 .results-footer .btn {
@@ -404,7 +443,7 @@ body {
 .error-title {
   font-size: 15px;
   font-weight: 700;
-  color: var(--color-level-a);
+  color: var(--color-danger);
 }
 
 .error-detail {
