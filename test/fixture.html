@@ -100,6 +100,14 @@
     </p>
   </section>
 
+  <section>
+    <h2>14. 可點擊目標尺寸不足（target-size，115 年修正版 2.5.8）</h2>
+    <p>下面兩個相鄰的迷你按鈕都只有 16×16px，且彼此緊貼（不符合間距豁免）：</p>
+    <div>
+      <button type="button" aria-label="關閉" style="width:16px;height:16px;padding:0;margin:0;display:inline-block">×</button><button type="button" aria-label="更多選項" style="width:16px;height:16px;padding:0;margin:0;display:inline-block">⋯</button>
+    </div>
+  </section>
+
   <!--
     未含在此頁的對應規則：
     - document-title / html-has-lang：由本頁「缺少」的 <title> 與 lang 屬性觸發

@@ -73,8 +73,11 @@
       resultTypes: ['violations', 'incomplete'],
       rules: {
         // axe 4.10 起 duplicate-id 因 WCAG 2.2 移除 4.1.1 而預設停用；
-        // 台灣「網站無障礙規範」仍沿用 4.1.1，故明確重新啟用
+        // 台灣規範 110.07 版（適用至 115.11.29）仍包含 4.1.1，故明確啟用
         'duplicate-id': { enabled: true },
+        // 115 年修正版新增 2.5.8 目標尺寸(最小)（WCAG 2.2），
+        // axe 4.10 預設停用此規則，明確啟用使對應生效
+        'target-size': { enabled: true },
       },
     });
 

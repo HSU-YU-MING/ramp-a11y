@@ -143,6 +143,7 @@ async function openPopup(browser, sw) {
     check('T3b 等級 A/AA 分組存在', headings.some((h) => h.includes('等級 A（')) && headings.some((h) => h.includes('等級 AA')));
     check('T3c 需人工複核分組存在', headings.some((h) => h.includes('需人工複核')));
     check('T3d link-in-text-block 有出現', titles.includes('連結僅以顏色區辨'));
+    check('T3e target-size 對應 2.5.8 有出現', titles.includes('可點擊目標尺寸不足'));
     await popup.screenshot({ path: OUT + '/popup-results.png' });
 
     // ===== T9：匯出報告（攔截下載並驗證內容）=====
