@@ -1,0 +1,12 @@
+{
+  "name": "ramp-a11y",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ramp — 網頁無障礙檢測 Chrome 擴充套件（對應台灣「網站無障礙規範」）",
+  "scripts": {
+    "test": "node test/e2e/run-e2e.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

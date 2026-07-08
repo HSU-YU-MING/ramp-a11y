@@ -80,6 +80,18 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 { printf 'if (window.axe) {\n  window.axe.configure({\n    locale: '; cat /tmp/zh_TW.json; printf '\n  });\n}\n'; } > vendor/axe-locale-zh_TW.js
 ```
 
+## 開發與測試
+
+端對端迴歸測試（12 項：狀態切換、掃描、繁中轉譯、高亮定位、快取還原、受保護頁面）：
+
+```sh
+npm install
+npm test        # 需本機安裝 Chrome；可用 CHROME_PATH 環境變數指定位置
+```
+
+測試會啟動一個獨立的 Chrome 視窗（使用暫存 profile，不影響日常瀏覽器），
+細節與已知限制（activeTab 無法程式化授權）見 [test/e2e/run-e2e.js](test/e2e/run-e2e.js) 檔頭註解。
+
 ## 限制聲明（重要）
 
 - **自動化檢測僅能涵蓋約三到四成的無障礙問題。** 鍵盤操作動線、報讀軟體實際體驗、內容語意是否恰當等，仍必須以人工方式複核。

@@ -1,6 +1,12 @@
 # Claude Code 本機設定
 .claude/
 
+# Node
+node_modules/
+
+# E2E 測試輸出（截圖等）
+test/e2e/output/
+
 # 作業系統雜項
 Thumbs.db
 .DS_Store
