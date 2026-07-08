@@ -23,6 +23,15 @@
         以繁體中文對應台灣「網站無障礙規範」。
       </p>
       <button id="btn-scan" class="btn btn-primary" type="button">開始檢測</button>
+      <p class="scan-options">
+        <label for="delay-select">掃描前等待</label>
+        <select id="delay-select">
+          <option value="0" selected>不等待</option>
+          <option value="3">3 秒</option>
+          <option value="10">10 秒</option>
+        </select>
+        <span class="option-hint">（動畫或延遲載入較多的頁面適用）</span>
+      </p>
     </section>
 
     <!-- 狀態二：載入中 -->
@@ -37,6 +46,21 @@
     <section id="view-results" class="view" hidden>
       <!-- 頂部統計列（固定不捲動） -->
       <div id="stats" class="stats" aria-live="polite"></div>
+      <!-- 工具列：結果篩選與目標等級 -->
+      <div class="toolbar">
+        <div id="filter-group" class="filter-group" role="group" aria-label="結果篩選">
+          <button class="chip active" type="button" data-filter="all" aria-pressed="true">全部</button>
+          <button class="chip" type="button" data-filter="violations" aria-pressed="false">違規</button>
+          <button class="chip" type="button" data-filter="review" aria-pressed="false">複核</button>
+        </div>
+        <label class="level-label" for="level-select">目標等級
+          <select id="level-select">
+            <option value="A">A</option>
+            <option value="AA" selected>AA</option>
+            <option value="AAA">AAA</option>
+          </select>
+        </label>
+      </div>
       <!-- 快取還原提示（僅還原上次結果時顯示） -->
       <p id="cache-note" class="cache-note" hidden></p>
       <!-- 可捲動的問題清單 -->

@@ -26,11 +26,28 @@ const btnScan = document.getElementById('btn-scan');
 const btnRescan = document.getElementById('btn-rescan');
 const btnRetry = document.getElementById('btn-retry');
 const btnExport = document.getElementById('btn-export');
+const levelSelect = document.getElementById('level-select');
+const delaySelect = document.getElementById('delay-select');
+const filterGroup = document.getElementById('filter-group');
+const loadingTextEl = document.querySelector('#view-loading .loading-text');
 
 // ===== 全域狀態 =====
 let rulesMap = new Map(); // axeRuleId → 對應表項目
 let currentTabId = null;  // 當前掃描的分頁 id
-let lastScan = null;      // 最後一次掃描 { result, url, ts }，供報告匯出
+let lastScan = null;      // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
+
+// 使用者偏好（chrome.storage.local 持久化）
+const prefs = {
+  targetLevel: 'AA',   // 目標檢測等級（政府網站標章要求 AA）
+  scanDelay: 0,        // 掃描前等待秒數（動畫、延遲載入頁面用）
+  resultFilter: 'all', // 結果篩選：all | violations | review
+};
+
+// 人工複核自評：目前網址的 { axeRuleId: 'pass' | 'fail' }，chrome.storage.local 持久化
+let reviewState = {};
+let reviewKey = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 等級顯示順序與標籤
 const LEVEL_ORDER = ['A', 'AA', 'AAA'];
@@ -117,6 +134,43 @@ async function getActiveTab() {
   return tab;
 }
 
+// ===== 偏好設定與人工複核自評的持久化 =====
+
+/** 載入偏好設定並同步到控制項 */
+async function loadPrefs() {
+  try {
+    const st = await chrome.storage.local.get('prefs');
+    Object.assign(prefs, st.prefs || {});
+  } catch { /* 讀取失敗就用預設值 */ }
+  levelSelect.value = prefs.targetLevel;
+  delaySelect.value = String(prefs.scanDelay);
+  syncFilterUI();
+}
+
+function savePrefs() {
+  try { chrome.storage.local.set({ prefs }); } catch { /* 忽略 */ }
+}
+
+/** 同步篩選 chips 的視覺與 aria 狀態 */
+function syncFilterUI() {
+  filterGroup.querySelectorAll('.chip').forEach((b) => {
+    const on = b.dataset.filter === prefs.resultFilter;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+}
+
+/** 載入指定網址的人工複核自評狀態 */
+async function loadReviewState(url) {
+  reviewKey = 'review::' + url;
+  try {
+    const st = await chrome.storage.local.get(reviewKey);
+    reviewState = st[reviewKey] || {};
+  } catch {
+    reviewState = {};
+  }
+}
+
 // ===== 掃描流程 =====
 
 async function runScan() {
@@ -134,6 +188,13 @@ async function runScan() {
       return;
     }
     currentTabId = tab.id;
+
+    // 掃描前等待（供動畫或延遲載入的頁面完成渲染）
+    if (prefs.scanDelay > 0) {
+      loadingTextEl.textContent = `等待頁面內容載入（${prefs.scanDelay} 秒）…`;
+      await sleep(prefs.scanDelay * 1000);
+      loadingTextEl.textContent = '檢測中…';
+    }
 
     // 步驟一：注入本地打包的 axe-core、繁中語言包與掃描器
     // （同一 isolated world 共用，axe 全域可被後續檔案取用）
@@ -158,7 +219,8 @@ async function runScan() {
       return;
     }
 
-    lastScan = { result, url: tab.url, ts: Date.now() };
+    await loadReviewState(tab.url);
+    lastScan = { result, url: tab.url, ts: Date.now(), fromCacheTs: null };
     renderResults(result, null);
 
     // 快取本次結果：popup 關閉後重開可直接還原，不必重掃
@@ -219,6 +281,7 @@ function translateRule(rule) {
       why: map.whyZh,
       how: map.howZh,
       note: map.noteZh || null, // 版本差異等補充說明（如 115 年修正版的增刪）
+      checkCodes: map.twCheckCodes || [], // 官方檢測碼（附件一 C 碼）
     };
   }
   return {
@@ -231,6 +294,7 @@ function translateRule(rule) {
     why: rule.description,
     how: null,
     note: null,
+    checkCodes: [],
   };
 }
 
@@ -259,8 +323,11 @@ function renderStats(violations, bpCount, incompleteCount) {
   statsEl.innerHTML = parts.join('');
 }
 
-/** 產生單一問題項目的 HTML */
-function issueHtml(item, badgeClass, badgeText) {
+/**
+ * 產生單一問題項目的 HTML
+ * @param {boolean} isReview 是否為「需人工複核」項目（顯示自評選單）
+ */
+function issueHtml(item, badgeClass, badgeText, isReview) {
   const nodesHtml = item.nodes
     .map(
       (n) => `
@@ -277,8 +344,11 @@ function issueHtml(item, badgeClass, badgeText) {
   const impactText = item.impact
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
+  const codesText = item.checkCodes && item.checkCodes.length
+    ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
+    : '';
   const guidelineHtml = item.mapped
-    ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}</p>`
+    ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}${codesText}</p>`
     : `<p class="guideline">${
         item.isBestPractice
           ? '最佳實務建議（非台灣規範必要項目）'
@@ -296,6 +366,20 @@ function issueHtml(item, badgeClass, badgeText) {
   const noteHtml = item.note
     ? `<p class="issue-note">※ ${escapeHtml(item.note)}</p>`
     : '';
+  // 需人工複核項目提供自評選單（對應官方自我評量流程）
+  const rv = reviewState[item.axeId] || '';
+  const reviewHtml = isReview
+    ? `
+      <div class="review-box">
+        <label>人工複核自評：
+          <select class="review-select" data-axe-id="${escapeHtml(item.axeId)}">
+            <option value=""${rv === '' ? ' selected' : ''}>未確認</option>
+            <option value="pass"${rv === 'pass' ? ' selected' : ''}>通過</option>
+            <option value="fail"${rv === 'fail' ? ' selected' : ''}>不通過</option>
+          </select>
+        </label>
+      </div>`
+    : '';
 
   return `
     <div class="issue">
@@ -311,6 +395,7 @@ function issueHtml(item, badgeClass, badgeText) {
         ${whyHtml}
         ${howHtml}
         ${noteHtml}
+        ${reviewHtml}
         <p><strong>受影響元素（點擊可在頁面上定位）：</strong></p>
         <ul class="nodes">${nodesHtml}</ul>
         ${item.nodeCount > item.nodes.length ? `<p class="node-more">還有 ${item.nodeCount - item.nodes.length} 個元素未列出（僅顯示前 ${item.nodes.length} 個）</p>` : ''}
@@ -349,6 +434,13 @@ function renderResults(result, cachedTs) {
     cacheNoteEl.hidden = true;
   }
 
+  // 目標等級與結果篩選（Freego 的檢測等級／顯示篩選之移植）
+  const levelIdx = LEVEL_ORDER.indexOf(prefs.targetLevel);
+  const withinTarget = (lv) => LEVEL_ORDER.indexOf(lv) <= levelIdx;
+  const showViolations = prefs.resultFilter !== 'review';
+  const showBp = prefs.resultFilter === 'all';
+  const showReview = prefs.resultFilter !== 'violations';
+
   let html = '';
 
   if (violations.length === 0) {
@@ -358,9 +450,10 @@ function renderResults(result, cachedTs) {
         <p class="success-title">太好了！未發現自動化可偵測的違規</p>
         <p class="success-note">自動化檢測僅能涵蓋約三到四成的無障礙問題，仍建議進行鍵盤操作、報讀軟體等人工複核。</p>
       </div>`;
-  } else {
-    // 依 A / AA / AAA 分組，同組內依嚴重度排序
+  } else if (showViolations) {
+    // 目標等級內：依 A / AA / AAA 分組，同組內依嚴重度排序
     LEVEL_ORDER.forEach((level) => {
+      if (!withinTarget(level)) return;
       const group = sortByImpact(violations.filter((v) => v.mapped && v.level === level));
       if (group.length === 0) return;
       html += `<h2 class="group-heading">等級 ${level}（${group.length} 項）</h2>`;
@@ -373,18 +466,25 @@ function renderResults(result, cachedTs) {
       html += `<h2 class="group-heading">其他 WCAG 項目（未對應台灣準則，${unmapped.length} 項）</h2>`;
       html += unmapped.map((v) => issueHtml(v, 'badge-unmapped', '其他')).join('');
     }
+
+    // 超出目標等級的項目（仍列出供參考，不與目標混在一起）
+    const beyond = sortByImpact(violations.filter((v) => v.mapped && !withinTarget(v.level)));
+    if (beyond.length > 0) {
+      html += `<h2 class="group-heading">超出目標等級 ${escapeHtml(prefs.targetLevel)}（${beyond.length} 項）</h2>`;
+      html += beyond.map((v) => issueHtml(v, 'badge-' + v.level, v.level)).join('');
+    }
   }
 
   // axe 最佳實務建議（非規範必要，獨立分組避免灌水「違規」數字）
-  if (bestPractice.length > 0) {
+  if (showBp && bestPractice.length > 0) {
     html += `<h2 class="group-heading">最佳實務建議（非規範必要，${bestPractice.length} 項）</h2>`;
     html += bestPractice.map((v) => issueHtml(v, 'badge-bp', '建議')).join('');
   }
 
-  // incomplete → 需人工複核
-  if (incomplete.length > 0) {
+  // incomplete → 需人工複核（附自評選單）
+  if (showReview && incomplete.length > 0) {
     html += `<h2 class="group-heading">需人工複核（${incomplete.length} 項）</h2>`;
-    html += incomplete.map((v) => issueHtml(v, 'badge-review', '複核')).join('');
+    html += incomplete.map((v) => issueHtml(v, 'badge-review', '複核', true)).join('');
   }
 
   issuesEl.innerHTML = html;
@@ -430,12 +530,19 @@ async function highlightOnPage(selector) {
 // ===== 報告匯出 =====
 
 /** 報告中的單一問題區塊 */
-function reportIssueHtml(item, badgeText) {
+function reportIssueHtml(item, badgeText, isReview) {
   const impactText = item.impact
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
+  const codesText = item.checkCodes && item.checkCodes.length
+    ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
+    : '';
+  const rv = reviewState[item.axeId] || '';
+  const reviewText = isReview
+    ? `<p><strong>人工複核自評：</strong>${rv === 'pass' ? '通過' : rv === 'fail' ? '不通過' : '未確認'}</p>`
+    : '';
   const meta = item.mapped
-    ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}`
+    ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}${codesText}`
     : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
 
   const nodes = item.nodes
@@ -452,6 +559,7 @@ function reportIssueHtml(item, badgeText) {
     ${item.why ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>` : ''}
     ${item.how ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>` : ''}
     ${item.note ? `<p class="more">※ ${escapeHtml(item.note)}</p>` : ''}
+    ${reviewText}
     <p><strong>受影響元素（${item.nodeCount}）：</strong></p>
     <ul class="nodes">${nodes}</ul>
     ${more}
@@ -482,10 +590,18 @@ function buildReportHtml(scan) {
     body += `<h2>最佳實務建議（非規範必要，${bestPractice.length} 項）</h2>` + bestPractice.map((v) => reportIssueHtml(v, '建議')).join('');
   }
   if (incomplete.length) {
-    body += `<h2>需人工複核（${incomplete.length} 項）</h2>` + incomplete.map((v) => reportIssueHtml(v, '複核')).join('');
+    body += `<h2>需人工複核（${incomplete.length} 項）</h2>` + incomplete.map((v) => reportIssueHtml(v, '複核', true)).join('');
   }
   if (!violations.length && !incomplete.length) {
     body += '<p>未發現自動化可偵測的違規。自動化檢測僅涵蓋部分無障礙問題，仍需人工複核。</p>';
+  }
+
+  // 人工複核自評摘要
+  let reviewSummary = '';
+  if (incomplete.length) {
+    const counts = { pass: 0, fail: 0, none: 0 };
+    incomplete.forEach((i) => { counts[reviewState[i.axeId] || 'none'] += 1; });
+    reviewSummary = `<p class="info">人工複核自評：通過 ${counts.pass} 項・不通過 ${counts.fail} 項・未確認 ${counts.none} 項（自評由檢測者自行填寫，僅供內部參考）</p>`;
   }
 
   const version = chrome.runtime.getManifest().version;
@@ -532,6 +648,7 @@ function buildReportHtml(scan) {
   <tr><th>違規總數</th><th>等級 A</th><th>等級 AA</th><th>等級 AAA</th><th>未對應</th><th>最佳實務建議</th><th>需人工複核</th></tr>
   <tr><td>${violations.length}</td><td>${levelCounts.A}</td><td>${levelCounts.AA}</td><td>${levelCounts.AAA}</td><td>${unmappedCount}</td><td>${bestPractice.length}</td><td>${incomplete.length}</td></tr>
 </table>
+${reviewSummary}
 ${body}
 <div class="disclaimer">
   <strong>限制聲明：</strong>自動化檢測僅能涵蓋約三到四成的無障礙問題，本報告不等同官方無障礙標章認證，
@@ -567,11 +684,47 @@ btnRescan.addEventListener('click', runScan);
 btnRetry.addEventListener('click', runScan);
 btnExport.addEventListener('click', exportReport);
 
+/** 以最後一次掃描結果重新渲染（篩選、目標等級變更時） */
+function rerender() {
+  if (lastScan) renderResults(lastScan.result, lastScan.fromCacheTs);
+}
+
+levelSelect.addEventListener('change', () => {
+  prefs.targetLevel = levelSelect.value;
+  savePrefs();
+  rerender();
+});
+
+delaySelect.addEventListener('change', () => {
+  prefs.scanDelay = Number(delaySelect.value) || 0;
+  savePrefs();
+});
+
+filterGroup.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  prefs.resultFilter = chip.dataset.filter;
+  syncFilterUI();
+  savePrefs();
+  rerender();
+});
+
+// 人工複核自評變更（事件代理，自評選單為動態渲染）
+issuesEl.addEventListener('change', (e) => {
+  const sel = e.target.closest('.review-select');
+  if (!sel || !reviewKey) return;
+  const axeId = sel.dataset.axeId;
+  if (sel.value) reviewState[axeId] = sel.value;
+  else delete reviewState[axeId];
+  try { chrome.storage.local.set({ [reviewKey]: reviewState }); } catch { /* 忽略 */ }
+});
+
 // popup 開啟時：
 //  1. 受保護頁面直接顯示「無法檢測」，不給一顆註定失敗的按鈕
 //  2. 若同一分頁、同一網址有快取結果，直接還原（不必重掃）
 (async function initPopup() {
   try {
+    await loadPrefs();
     const tab = await getActiveTab();
     if (!tab) return;
     if (isRestrictedUrl(tab.url)) {
@@ -587,8 +740,9 @@ btnExport.addEventListener('click', exportReport);
     const cached = store[key];
     if (cached && cached.url === tab.url && cached.result) {
       await loadRulesMap();
+      await loadReviewState(tab.url);
       currentTabId = tab.id;
-      lastScan = { result: cached.result, url: cached.url, ts: cached.ts };
+      lastScan = { result: cached.result, url: cached.url, ts: cached.ts, fromCacheTs: cached.ts };
       renderResults(cached.result, cached.ts);
     }
   } catch {

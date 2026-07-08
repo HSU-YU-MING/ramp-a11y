@@ -220,6 +220,92 @@ body {
   font-size: 15px;
 }
 
+/* ===== 工具列：結果篩選與目標等級 ===== */
+.toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filter-group {
+  display: flex;
+  gap: 4px;
+}
+
+.chip {
+  padding: 3px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chip.active {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.level-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar select,
+.scan-options select {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  color: var(--color-text);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+/* 初始畫面的掃描選項 */
+.scan-options {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.option-hint {
+  display: block;
+  margin-top: 2px;
+}
+
+/* 人工複核自評 */
+.review-box {
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.review-box select {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 2px 6px;
+  margin-left: 4px;
+  color: var(--color-text);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
 /* 快取還原提示 */
 .cache-note {
   flex-shrink: 0;

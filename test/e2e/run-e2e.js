@@ -144,6 +144,30 @@ async function openPopup(browser, sw) {
     check('T3c 需人工複核分組存在', headings.some((h) => h.includes('需人工複核')));
     check('T3d link-in-text-block 有出現', titles.includes('連結僅以顏色區辨'));
     check('T3e target-size 對應 2.5.8 有出現', titles.includes('可點擊目標尺寸不足'));
+
+    // ===== T10：目標等級篩選（預設 AA；切到 A 後 AA 項目應移入「超出目標等級」）=====
+    await popup.select('#level-select', 'A');
+    await sleep(300);
+    const h10 = await popup.$$eval('.group-heading', (els) => els.map((e) => e.textContent));
+    check(
+      'T10 目標等級篩選',
+      h10.some((h) => h.includes('超出目標等級 A（')) && !h10.some((h) => h.startsWith('等級 AA')),
+      JSON.stringify(h10)
+    );
+    await popup.select('#level-select', 'AA');
+    await sleep(300);
+
+    // ===== T11：結果篩選 chips（複核 → 只剩需人工複核分組）=====
+    await popup.click('.chip[data-filter="review"]');
+    await sleep(300);
+    const h11 = await popup.$$eval('.group-heading', (els) => els.map((e) => e.textContent));
+    check(
+      'T11 結果篩選（複核）',
+      h11.some((h) => h.includes('需人工複核')) && !h11.some((h) => h.startsWith('等級 A（')),
+      JSON.stringify(h11)
+    );
+    await popup.click('.chip[data-filter="all"]');
+    await sleep(300);
     await popup.screenshot({ path: OUT + '/popup-results.png' });
 
     // ===== T9：匯出報告（攔截下載並驗證內容）=====
@@ -164,7 +188,9 @@ async function openPopup(browser, sw) {
         html.includes('Ramp 無障礙檢測報告') &&
         html.includes('等級 A') &&
         html.includes('限制聲明') &&
-        html.includes('對比值(最小)'); // 官方準則名稱有進報告
+        html.includes('對比值(最小)') && // 官方準則名稱有進報告
+        html.includes('HM1240200C') &&   // 官方檢測碼有進報告（document-title）
+        html.includes('人工複核自評');    // 自評摘要與狀態有進報告
     }
     check('T9 匯出報告產生且內容正確', reportOk, reportFile || '無新下載檔案');
 
@@ -199,6 +225,10 @@ async function openPopup(browser, sw) {
     );
     await popup2.screenshot({ path: OUT + '/popup-cache.png' });
 
+    // ===== T12（前半）：在快取還原的 popup 中設定人工複核自評 =====
+    await popup2.select('.review-select', 'pass');
+    await sleep(300);
+
     // T6b：還原後高亮仍可用
     await popup2.click('.issue-header');
     await sleep(200);
@@ -218,6 +248,10 @@ async function openPopup(browser, sw) {
     await sleep(1200);
     const hl4 = await page.evaluate(() => document.querySelectorAll('.ramp-a11y-highlight').length);
     check('T7 頁面重整後高亮自動補注入', hl4 === 1, 'highlight=' + hl4);
+
+    // ===== T12（後半）：自評狀態跨 popup 開關與頁面重整仍保存 =====
+    const rv = await popup3.$eval('.review-select', (el) => el.value);
+    check('T12 人工複核自評持久化', rv === 'pass', 'value=' + rv);
     await popup3.close();
 
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
