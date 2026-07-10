@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>動態播報測試頁（即時區域）</title>
+  <style>body { font-family: sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+    button { margin: 8px 8px 8px 0; }</style>
+</head>
+<body>
+  <h1>動態播報測試頁</h1>
+  <p>按下按鈕會更新即時區域，模擬「儲存提示」與「錯誤警示」。</p>
+
+  <!-- polite：目前這句念完再念 -->
+  <button id="save" type="button">儲存</button>
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <!-- assertive：立即打斷念出（role=alert 隱含 assertive）-->
+  <button id="submit" type="button">送出</button>
+  <div id="alert-box" role="alert"></div>
+
+  <script>
+    document.getElementById('save').addEventListener('click', function () {
+      document.getElementById('status').textContent = '已儲存變更';
+    });
+    document.getElementById('submit').addEventListener('click', function () {
+      document.getElementById('alert-box').textContent = '密碼長度不足';
+    });
+  </script>
+</body>
+</html>

@@ -593,6 +593,93 @@
     }
   };
 
+  // ===== 動態播報監看（即時區域 aria-live / role=alert 等）=====
+  // NVDA 對「即時區域」的內容變動會自動播報：assertive／role=alert 立即打斷念出；
+  // polite／role=status 等目前這句念完再念。以 MutationObserver 監看這些區域的變化，
+  // 把 NVDA 會播報的內容與時機累積到緩衝區，供 popup 呈現成時間軸（動態模擬）。
+
+  const LIVE_SEL = '[aria-live], [role="alert"], [role="status"], [role="log"], [role="timer"], [role="marquee"], output';
+
+  // 監看狀態掛在 window 上，跨多次注入與 popup 開關持續累積（頁面重整才清空）
+  window.__rampA11yLive = window.__rampA11yLive || { log: [], observer: null, on: false };
+
+  /** 解析即時區域的播報優先度：assertive（立即）／polite（依序）／null（不播報） */
+  function livePoliteness(region) {
+    const al = (region.getAttribute('aria-live') || '').toLowerCase();
+    if (al === 'off') return null;
+    if (al === 'assertive') return 'assertive';
+    if (al === 'polite') return 'polite';
+    const role = (region.getAttribute('role') || '').toLowerCase();
+    if (role === 'alert') return 'assertive';
+    if (role === 'status' || role === 'log' || role === 'timer' || role === 'marquee') return 'polite';
+    return region.tagName === 'OUTPUT' ? 'polite' : 'polite';
+  }
+
+  /** 記錄一筆播報（去重、去空白、限長） */
+  function liveRecord(region, text) {
+    if (region.closest && region.closest('[aria-hidden="true"]')) return; // 隱藏區域不播報
+    const t = (text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    const pol = livePoliteness(region);
+    if (!pol) return;
+    const buf = window.__rampA11yLive.log;
+    const last = buf[buf.length - 1];
+    if (last && last.text === t && last.politeness === pol) return; // 連續同內容不重複
+    const src = region.getAttribute('role')
+      || (region.getAttribute('aria-live') ? 'aria-live=' + region.getAttribute('aria-live') : region.tagName.toLowerCase());
+    buf.push({ ts: Date.now(), politeness: pol, text: t.slice(0, 200), source: src });
+    if (buf.length > 100) buf.shift(); // 上限，避免無限成長
+  }
+
+  /** 開始監看（冪等）；回傳目前是否監看中 */
+  window.__rampA11yLiveStart = function () {
+    const state = window.__rampA11yLive;
+    if (state.on) return true;
+    try {
+      const obs = new MutationObserver((muts) => {
+        for (const m of muts) {
+          const node = m.target && m.target.nodeType === 1 ? m.target : (m.target && m.target.parentElement);
+          const region = node && node.closest ? node.closest(LIVE_SEL) : null;
+          if (!region) continue;
+          if (region.getAttribute('aria-atomic') === 'true') {
+            liveRecord(region, region.textContent); // 整區播報
+          } else if (m.type === 'characterData') {
+            liveRecord(region, m.target.nodeValue);
+          } else if (m.type === 'childList' && m.addedNodes.length) {
+            let added = '';
+            m.addedNodes.forEach((n) => { added += ' ' + (n.textContent != null ? n.textContent : (n.nodeValue || '')); });
+            liveRecord(region, added || region.textContent);
+          }
+        }
+      });
+      obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+      state.observer = obs;
+      state.on = true;
+    } catch (e) {
+      state.on = false;
+    }
+    return state.on;
+  };
+
+  /** 停止監看（緩衝區保留） */
+  window.__rampA11yLiveStop = function () {
+    const s = window.__rampA11yLive;
+    if (s.observer) { try { s.observer.disconnect(); } catch (e) { /* 忽略 */ } s.observer = null; }
+    s.on = false;
+    return true;
+  };
+
+  /** 取得緩衝區（可序列化陣列的副本） */
+  window.__rampA11yLiveGet = function () {
+    return { on: window.__rampA11yLive.on, log: (window.__rampA11yLive.log || []).slice() };
+  };
+
+  /** 清空緩衝區 */
+  window.__rampA11yLiveClear = function () {
+    window.__rampA11yLive.log = [];
+    return true;
+  };
+
   /**
    * 執行 axe 掃描（JavaScript 執行後的實際 DOM），
    * 只回傳可序列化的純資料（executeScript 的結果必須可 JSON 化）。

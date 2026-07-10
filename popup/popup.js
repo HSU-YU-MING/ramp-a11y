@@ -38,8 +38,9 @@ const readingSummaryEl = document.getElementById('reading-summary');
 let rulesMap = new Map(); // axeRuleId → 對應表項目
 let currentTabId = null;  // 當前掃描的分頁 id
 let lastScan = null;      // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
-let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）
+let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）| live（動態播報）
 let readingData = null;   // 朗讀順序資料快取（每次重新檢測時失效）
+let liveTimer = null;     // 動態播報輪詢計時器
 
 // 使用者偏好（chrome.storage.local 持久化）
 const prefs = {
@@ -573,6 +574,8 @@ async function highlightOnPage(selector) {
 
 /** 切換檢視模式的介面狀態（stats／工具列僅在檢測問題模式顯示） */
 function setModeUI(mode) {
+  // 離開動態播報模式時停止輪詢（頁面端的監看仍持續累積）
+  if (mode !== 'live' && liveTimer) { clearInterval(liveTimer); liveTimer = null; }
   currentMode = mode;
   modeTabs.querySelectorAll('.mode-tab').forEach((t) => {
     const on = t.dataset.mode === mode;
@@ -583,9 +586,9 @@ function setModeUI(mode) {
   statsEl.hidden = !issuesMode;
   toolbarEl.hidden = !issuesMode;
   if (!issuesMode) {
-    cacheNoteEl.hidden = true;       // 朗讀模式不顯示快取提示
+    cacheNoteEl.hidden = true;       // 非檢測問題模式不顯示快取提示
   } else {
-    readingSummaryEl.hidden = true;  // 回到檢測問題模式時收起朗讀摘要
+    readingSummaryEl.hidden = true;  // 回到檢測問題模式時收起摘要列
   }
 }
 
@@ -711,6 +714,74 @@ async function highlightROonPage(roIndex) {
     return res === true;
   } catch {
     return false;
+  }
+}
+
+// ===== 動態播報（即時區域模擬）=====
+
+/** 產生單一播報項目的 HTML */
+function liveItemHtml(e) {
+  const pol = e.politeness === 'assertive'
+    ? '<span class="live-pol assertive">立即播報</span>'
+    : '<span class="live-pol polite">依序播報</span>';
+  const d = new Date(e.ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const src = e.source ? `<span class="live-src">${escapeHtml(e.source)}</span>` : '';
+  return `
+    <div class="live-item ${e.politeness}">
+      <span class="live-time">${time}</span>
+      ${pol}
+      <span class="live-text">🔊 ${escapeHtml(e.text)}</span>
+      ${src}
+    </div>`;
+}
+
+/** 渲染動態播報時間軸（最新在上）與摘要 */
+function renderLiveList(data) {
+  const log = (data && data.log) || [];
+  readingSummaryEl.hidden = false;
+  readingSummaryEl.innerHTML =
+    `監看即時區域中（aria-live／role=alert…）　已捕捉 <strong>${log.length}</strong> 則播報`
+    + `<button class="live-clear" type="button">清除</button>`;
+  if (!log.length) {
+    issuesEl.innerHTML = '<p class="ro-empty">監看中… 在頁面上觸發動態變化（送出表單看錯誤訊息、按下儲存看提示、即時搜尋…），NVDA 會自動播報的內容就會依序出現在這裡。</p>';
+    return;
+  }
+  issuesEl.innerHTML = log.slice().reverse().map(liveItemHtml).join('');
+  issuesEl.scrollTop = 0;
+}
+
+/** 向頁面取回目前的播報緩衝並渲染 */
+async function refreshLive() {
+  if (currentTabId == null) return;
+  try {
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: () => (window.__rampA11yLiveGet ? window.__rampA11yLiveGet() : { on: false, log: [] }),
+    });
+    const data = injection && injection[0] ? injection[0].result : null;
+    if (currentMode === 'live') renderLiveList(data || { log: [] });
+  } catch {
+    /* 分頁關閉或跳轉時忽略 */
+  }
+}
+
+/** 切到動態播報模式：注入監看器、開始輪詢 */
+async function enterLiveMode() {
+  setModeUI('live');
+  readingSummaryEl.hidden = true;
+  issuesEl.innerHTML = '<p class="ro-loading">開始監看即時區域…</p>';
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: currentTabId }, files: ['content/scanner.js'] });
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: () => window.__rampA11yLiveStart && window.__rampA11yLiveStart(),
+    });
+    await refreshLive();
+    liveTimer = setInterval(refreshLive, 1200); // 每 1.2 秒輪詢新播報
+  } catch (err) {
+    issuesEl.innerHTML = '<p class="ro-empty">無法在此頁面啟動動態監看，請重新檢測後再試。</p>';
   }
 }
 
@@ -914,16 +985,28 @@ filterGroup.addEventListener('click', (e) => {
   rerender();
 });
 
-// 檢視模式切換：檢測問題 ↔ 朗讀順序
+// 檢視模式切換：檢測問題 ↔ 朗讀順序 ↔ 動態播報
 modeTabs.addEventListener('click', (e) => {
   const tab = e.target.closest('.mode-tab');
   if (!tab || tab.dataset.mode === currentMode) return;
-  if (tab.dataset.mode === 'reading') {
+  const mode = tab.dataset.mode;
+  if (mode === 'reading') {
     enterReadingMode();
+  } else if (mode === 'live') {
+    enterLiveMode();
   } else {
     setModeUI('issues');
     rerender(); // 以最後一次掃描結果重繪問題清單
   }
+});
+
+// 動態播報「清除」按鈕（摘要列為動態渲染，採事件代理）
+readingSummaryEl.addEventListener('click', (e) => {
+  if (!e.target.closest('.live-clear') || currentTabId == null) return;
+  chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: () => window.__rampA11yLiveClear && window.__rampA11yLiveClear(),
+  }).then(() => refreshLive());
 });
 
 // 人工複核自評變更（事件代理，自評選單為動態渲染）

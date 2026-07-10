@@ -335,6 +335,21 @@ async function openPopup(browser, sw) {
     check('T17a 主要內容地標', stops.some((s) => s.kind === 'landmark' && s.boundary === 'enter' && s.text === '主要內容區'));
     check('T17b 地標離開邊界', stops.some((s) => s.kind === 'landmark' && s.boundary === 'exit' && s.text === '離開導覽區'));
 
+    // ===== T18：動態播報監看（即時區域 aria-live / role=alert）=====
+    await page.goto(`http://127.0.0.1:${PORT}/live-fixture.html`, { waitUntil: 'load' });
+    await page.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
+    const liveOn = await page.evaluate(() => window.__rampA11yLiveStart());
+    await page.click('#save');
+    await sleep(250);
+    await page.click('#submit');
+    await sleep(250);
+    const live = await page.evaluate(() => window.__rampA11yLiveGet());
+    const saved = live.log.find((e) => e.text === '已儲存變更');
+    const alertMsg = live.log.find((e) => e.text === '密碼長度不足');
+    check('T18 動態播報監看啟動', liveOn === true && live.on === true);
+    check('T18a polite 儲存提示', saved && saved.politeness === 'polite', saved && saved.politeness);
+    check('T18b assertive 警示（role=alert）', alertMsg && alertMsg.politeness === 'assertive', alertMsg && alertMsg.politeness);
+
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();
