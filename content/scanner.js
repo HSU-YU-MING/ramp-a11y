@@ -264,6 +264,37 @@
   }
 
   /**
+   * 表格儲存格：座標「第 N 列 第 N 欄」與關聯的欄/列標題（NVDA 進入儲存格會念）。
+   * 僅支援原生 <table>（cellIndex/rowIndex）；ARIA 網格暫不計算。
+   */
+  function nvdaTableCell(el) {
+    if (el.tagName !== 'TD' && el.tagName !== 'TH') return null;
+    const row = el.parentElement;
+    if (!row || row.cells == null || el.cellIndex == null || row.rowIndex == null) return null;
+    const coord = '第 ' + (row.rowIndex + 1) + ' 列 第 ' + (el.cellIndex + 1) + ' 欄';
+    const table = el.closest('table');
+    let colHeader = null, rowHeader = null;
+    if (table) {
+      const headRow = (table.tHead && table.tHead.rows[0]) || table.rows[0];
+      if (headRow && headRow !== row) {
+        const hc = headRow.cells[el.cellIndex];
+        if (hc && hc.tagName === 'TH') colHeader = (hc.textContent || '').trim() || null;
+      }
+      const first = row.cells[0];
+      if (first && first.tagName === 'TH' && first !== el) rowHeader = (first.textContent || '').trim() || null;
+    }
+    return { coord, colHeader, rowHeader };
+  }
+
+  /** 表格維度「表格有 N 欄 M 列」（NVDA 進入表格會念；僅原生 <table>） */
+  function nvdaTableDims(el) {
+    if (el.tagName !== 'TABLE') return null;
+    const rows = el.rows ? el.rows.length : 0;
+    const cols = el.rows && el.rows[0] ? el.rows[0].cells.length : 0;
+    return rows && cols ? '表格有 ' + cols + ' 欄 ' + rows + ' 列' : null;
+  }
+
+  /**
    * 計算單一元素的 NVDA 報讀預覽
    * { name, role, roleEn, nameRequired, value, states, position, itemCount, description }。
    * 依賴 axe.commons（vendor/axe.min.js 注入後可用）；不可用或計算失敗時
@@ -304,6 +335,18 @@
     if (!roleZh && !announcedRoleEn) return null;
 
     const value = nvdaValue(el, announcedRoleEn);
+    let position = nvdaPosition(el, announcedRoleEn);
+    let itemCount = nvdaItemCount(el, announcedRoleEn);
+    let description = nvdaDescription(el, name);
+    // 表格：儲存格座標＋標題、表格維度
+    const cell = nvdaTableCell(el);
+    if (cell) {
+      position = position || cell.coord;
+      const heads = [cell.colHeader, cell.rowHeader].filter(Boolean).join('・');
+      if (heads) description = description ? description + '・' + heads : heads;
+    }
+    const dims = nvdaTableDims(el);
+    if (dims) itemCount = itemCount || dims;
     return {
       name: name || null,                     // null 表示無可朗讀名稱
       role: roleZh,                           // 已核對的中文角色（含標題階層）；null 表示未收錄
@@ -311,9 +354,9 @@
       nameRequired,                           // 此角色是否必須有名稱（決定是否顯示「無可朗讀名稱」）
       value: value ? value.slice(0, 60) : null, // 目前值／內容（編輯區、下拉、滑桿、進度）
       states: nvdaStates(el),
-      position: nvdaPosition(el, announcedRoleEn),   // 集合位置「N 之 M」
-      itemCount: nvdaItemCount(el, announcedRoleEn), // 清單項目數「有 N 項」
-      description: nvdaDescription(el, name),         // aria-describedby／title 描述
+      position,     // 集合位置「N 之 M」或儲存格座標「第 N 列 第 N 欄」
+      itemCount,    // 清單項目數「有 N 項」或表格維度「表格有 N 欄 M 列」
+      description,  // aria-describedby／title 描述，或儲存格的欄/列標題
     };
   }
 
@@ -358,6 +401,47 @@
     if (t === 'DD') return '釋義';
     return '文字';
   }
+
+  // 地標名稱（校對自 NVDA 官方 zh_TW）
+  const RO_LANDMARK_ZH = {
+    banner: '橫幅區', navigation: '導覽區', main: '主要內容區', complementary: '補充區',
+    contentinfo: '資訊區', region: '區域', search: '搜尋區', form: '表單區',
+  };
+  function roHasName(el) {
+    return !!(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby'));
+  }
+  /** 元素是否為地標（含隱含地標的 HTML 元素）→ 回傳地標中文名，否則 null */
+  function roLandmark(el) {
+    const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
+    if (roleAttr && RO_LANDMARK_ZH[roleAttr]) {
+      if ((roleAttr === 'region' || roleAttr === 'form') && !roHasName(el)) return null;
+      return RO_LANDMARK_ZH[roleAttr];
+    }
+    switch (el.tagName) {
+      case 'NAV': return '導覽區';
+      case 'MAIN': return '主要內容區';
+      case 'ASIDE': return '補充區';
+      // header/footer 僅在非巢狀於 article/section 等時才是地標
+      case 'HEADER': return el.closest('article,aside,main,nav,section') ? null : '橫幅區';
+      case 'FOOTER': return el.closest('article,aside,main,nav,section') ? null : '資訊區';
+      case 'SECTION': return roHasName(el) ? '區域' : null; // 具名 section 才是地標
+      case 'FORM': return roHasName(el) ? '表單區' : null;
+      default: return null;
+    }
+  }
+  /** 需在朗讀順序中標示邊界的區域（地標／表格），含進入與離開的朗讀文字 */
+  function roBoundary(el) {
+    const lm = roLandmark(el);
+    if (lm) {
+      const label = (el.getAttribute('aria-label') || '').trim();
+      return { kind: 'landmark', enter: label ? label + ' ' + lm : lm, exit: '離開' + lm };
+    }
+    if (el.tagName === 'TABLE') {
+      return { kind: 'table', enter: nvdaTableDims(el) || '表格', exit: '離開表格' };
+    }
+    return null;
+  }
+
   function roRect(el) {
     const r = el.getBoundingClientRect();
     return { top: r.top + window.scrollY, left: r.left + window.scrollX, w: r.width, h: r.height };
@@ -393,10 +477,30 @@
       if (!text || !el || stops.length >= MAX) return;
       const roIndex = stops.length;
       try { el.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
-      stops.push({
+      const stop = {
         roIndex, kind: 'text', role: roBlockRole(el),
         text: text.slice(0, 140), name: null, nameRequired: false, states: [],
+        value: null, position: null, itemCount: null, description: null,
         flagged: false, rect: roRangeRect(nodes) || roRect(el),
+      };
+      // 表格儲存格：補座標與欄/列標題
+      if (el.tagName === 'TD' || el.tagName === 'TH') {
+        const cell = nvdaTableCell(el);
+        if (cell) {
+          stop.position = cell.coord;
+          const h = [cell.colHeader, cell.rowHeader].filter(Boolean).join('・');
+          if (h) stop.description = h;
+        }
+      }
+      stops.push(stop);
+    }
+    // 地標／表格的進入‧離開邊界標記（無幾何範圍，不參與視覺落差判定）
+    function pushBoundary(kind, text, dir) {
+      if (stops.length >= MAX) return;
+      stops.push({
+        roIndex: stops.length, kind, boundary: dir, role: null, text,
+        name: null, nameRequired: false, states: [], value: null, position: null,
+        itemCount: null, description: null, flagged: false, rect: null,
       });
     }
     function pushObject(c) {
@@ -423,10 +527,13 @@
         if (c.nodeType !== 1) continue;
         if (RO_SKIP_TAGS.has(c.tagName) || roIsHidden(c)) continue;
         if (roIsObject(c)) { pushObject(c); continue; } // 物件為獨立停點，不深入其子樹
+        const bd = roBoundary(c);         // 地標／表格邊界
         const blk = roIsBlock(c);
-        if (blk) flush();                 // 進入區塊前先斷句
-        walk(c, blk ? c : blockEl);
-        if (blk) flush();                 // 離開區塊後再斷句
+        if (blk || bd) flush();           // 進入區塊/邊界前先斷句
+        if (bd) pushBoundary(bd.kind, bd.enter, 'enter');
+        walk(c, (blk || bd) ? c : blockEl);
+        if (blk || bd) flush();           // 離開區塊/邊界後再斷句
+        if (bd) pushBoundary(bd.kind, bd.exit, 'exit');
       }
     }
     try { walk(document.body, document.body); flush(); }
@@ -465,6 +572,7 @@
         text: s.text != null ? s.text : null, states: s.states || [], flagged: !!s.flagged,
         value: s.value != null ? s.value : null, position: s.position != null ? s.position : null,
         itemCount: s.itemCount != null ? s.itemCount : null, description: s.description != null ? s.description : null,
+        boundary: s.boundary || null,
       })),
     };
   };

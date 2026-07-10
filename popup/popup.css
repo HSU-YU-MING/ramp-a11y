@@ -721,6 +721,38 @@ body {
   white-space: nowrap;
 }
 
+/* 地標／表格進出邊界：區域信號燈，非互動 */
+.ro-boundary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 2px;
+  padding: 5px 10px;
+  border-left: 3px solid var(--color-brand);
+  background: var(--color-hover-brand);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+}
+
+.ro-boundary.exit {
+  border-left-style: dashed;
+  opacity: 0.75;
+}
+
+.ro-bchip {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-brand);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ro-btext { color: var(--color-text); font-weight: 600; }
+.ro-boundary.exit .ro-btext { font-weight: 400; color: var(--color-text-muted); }
+
 @media (prefers-color-scheme: dark) {
   .ro-states { color: var(--color-btn-secondary); }
 }

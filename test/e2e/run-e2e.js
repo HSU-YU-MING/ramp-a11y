@@ -320,6 +320,21 @@ async function openPopup(browser, sw) {
       (more.states || []).includes('子功能表') && (more.states || []).includes('折疊'), JSON.stringify(more.states));
     check('T15g 多行狀態', note.name === '備註', 'name=' + note.name);
 
+    // ===== T16：表格座標、欄/列標題、表格維度 =====
+    const stops = nv.stops;
+    const tblEnter = stops.find((s) => s.kind === 'table' && s.boundary === 'enter');
+    check('T16 表格維度', tblEnter && tblEnter.text === '表格有 2 欄 3 列', tblEnter && tblEnter.text);
+    const cell = stops.find((s) => (s.text || '') === '1000');
+    check('T16a 儲存格座標', cell && cell.position === '第 2 列 第 2 欄', cell && cell.position);
+    check('T16b 儲存格欄/列標題', cell && cell.description === '金額・一月', cell && cell.description);
+    check('T16c 表格離開邊界', stops.some((s) => s.kind === 'table' && s.boundary === 'exit' && s.text === '離開表格'));
+
+    // ===== T17：地標進入‧離開邊界 =====
+    const navEnter = stops.find((s) => s.kind === 'landmark' && s.boundary === 'enter' && /導覽區/.test(s.text || ''));
+    check('T17 導覽地標（含 aria-label）', navEnter && navEnter.text === '主要選單 導覽區', navEnter && navEnter.text);
+    check('T17a 主要內容地標', stops.some((s) => s.kind === 'landmark' && s.boundary === 'enter' && s.text === '主要內容區'));
+    check('T17b 地標離開邊界', stops.some((s) => s.kind === 'landmark' && s.boundary === 'exit' && s.text === '離開導覽區'));
+
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();

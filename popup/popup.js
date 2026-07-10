@@ -606,6 +606,17 @@ async function execReadingOrder() {
 
 /** 產生單一朗讀停點的 HTML */
 function readingItemHtml(s) {
+  // 地標／表格的進入‧離開邊界：非互動的區域標記
+  if (s.kind === 'landmark' || s.kind === 'table') {
+    const dir = s.boundary === 'exit' ? 'exit' : 'enter';
+    const tag = s.kind === 'table' ? '表格' : '地標';
+    return `
+      <div class="ro-boundary ${dir}">
+        <span class="ro-seq">${s.roIndex + 1}</span>
+        <span class="ro-bchip">${tag}</span>
+        <span class="ro-btext">${escapeHtml(s.text || '')}</span>
+      </div>`;
+  }
   const roleTag = s.role ? `<span class="ro-role">${escapeHtml(s.role)}</span>` : '';
   let body;
   if (s.kind === 'object') {
@@ -622,7 +633,10 @@ function readingItemHtml(s) {
     const extraHtml = extra ? ` <span class="nvda-pos">${extra}</span>` : '';
     body = `<span class="ro-body">${name}${value}${states}${extraHtml}</span>`;
   } else {
-    body = `<span class="ro-body ro-text">${escapeHtml(s.text || '')}</span>`;
+    // 文字停點（含表格儲存格的座標與欄/列標題）
+    const pos = s.position ? ` <span class="nvda-pos">${escapeHtml(s.position)}</span>` : '';
+    const desc = s.description ? ` <span class="nvda-desc">${escapeHtml(s.description)}</span>` : '';
+    body = `<span class="ro-body ro-text">${escapeHtml(s.text || '')}${pos}${desc}</span>`;
   }
   const flag = s.flagged
     ? '<span class="ro-flag" title="此停點在畫面上的左右位置與朗讀先後相反（視覺順序與朗讀順序落差，對應 WCAG 1.3.2）">順序落差</span>'
