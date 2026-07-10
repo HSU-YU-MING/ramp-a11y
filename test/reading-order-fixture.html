@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>朗讀順序測試頁</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; line-height: 1.6; }
+    section { margin-bottom: 24px; }
+    /* 故意用 flex order 讓「視覺順序」與「DOM／朗讀順序」相反 */
+    .reorder { display: flex; gap: 16px; }
+    .reorder .dom-first { order: 2; }   /* DOM 第一，視覺被排到右邊 */
+    .reorder .dom-second { order: 1; }  /* DOM 第二，視覺被排到左邊 */
+    /* float:right 也會造成同列反序 */
+    .float-wrap::after { content: ""; display: block; clear: both; }
+    .float-wrap .later { float: right; }
+    [aria-hidden="true"] { color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>朗讀順序測試頁</h1>
+
+  <p>第一段正常內文，用來確認一般流程照 DOM 順序線性化。</p>
+
+  <nav aria-label="主要導覽">
+    <a href="/a">連結甲</a>
+    <a href="/b">連結乙</a>
+  </nav>
+
+  <h2>行內連結測試</h2>
+  <p>這個段落中間夾了一個 <a href="/inline">行內連結</a>，後面還有接續的文字，用來驗證朗讀順序會把連結插在文字中間。</p>
+
+  <section class="reorder">
+    <p class="dom-first">DOM 第一段（CSS 把它排到視覺右邊）</p>
+    <p class="dom-second">DOM 第二段（CSS 把它排到視覺左邊）</p>
+  </section>
+
+  <button type="button">一顆按鈕</button>
+
+  <ul>
+    <li>清單項目一</li>
+    <li>清單項目二</li>
+  </ul>
+
+  <p aria-hidden="true">這段被 aria-hidden 隱藏，NVDA 不會念，也不該出現在朗讀順序中。</p>
+</body>
+</html>

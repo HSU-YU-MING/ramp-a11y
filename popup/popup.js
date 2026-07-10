@@ -30,11 +30,16 @@ const levelSelect = document.getElementById('level-select');
 const delaySelect = document.getElementById('delay-select');
 const filterGroup = document.getElementById('filter-group');
 const loadingTextEl = document.querySelector('#view-loading .loading-text');
+const modeTabs = document.getElementById('mode-tabs');
+const toolbarEl = document.querySelector('.toolbar');
+const readingSummaryEl = document.getElementById('reading-summary');
 
 // ===== 全域狀態 =====
 let rulesMap = new Map(); // axeRuleId → 對應表項目
 let currentTabId = null;  // 當前掃描的分頁 id
 let lastScan = null;      // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
+let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）
+let readingData = null;   // 朗讀順序資料快取（每次重新檢測時失效）
 
 // 使用者偏好（chrome.storage.local 持久化）
 const prefs = {
@@ -175,6 +180,7 @@ async function loadReviewState(url) {
 
 async function runScan() {
   showView('loading');
+  readingData = null; // 頁面即將重新檢測，舊的朗讀順序失效
   try {
     await loadRulesMap();
 
@@ -451,6 +457,7 @@ function classifyResults(result) {
 }
 
 function renderResults(result, cachedTs) {
+  setModeUI('issues'); // 結果一律以「檢測問題」模式呈現
   const { violations, bestPractice, incomplete } = classifyResults(result);
 
   renderStats(violations, bestPractice.length, incomplete.length);
@@ -549,6 +556,134 @@ async function highlightOnPage(selector) {
         files: ['content/scanner.js'],
       });
       res = await execHighlight(selector);
+    }
+    return res === true;
+  } catch {
+    return false;
+  }
+}
+
+// ===== 朗讀順序預覽（第二階段）=====
+
+/** 切換檢視模式的介面狀態（stats／工具列僅在檢測問題模式顯示） */
+function setModeUI(mode) {
+  currentMode = mode;
+  modeTabs.querySelectorAll('.mode-tab').forEach((t) => {
+    const on = t.dataset.mode === mode;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  const issuesMode = mode === 'issues';
+  statsEl.hidden = !issuesMode;
+  toolbarEl.hidden = !issuesMode;
+  if (!issuesMode) {
+    cacheNoteEl.hidden = true;       // 朗讀模式不顯示快取提示
+  } else {
+    readingSummaryEl.hidden = true;  // 回到檢測問題模式時收起朗讀摘要
+  }
+}
+
+/** 注入掃描器並取得朗讀順序（線性化的無障礙樹＋視覺順序落差） */
+async function execReadingOrder() {
+  if (currentTabId == null) return null;
+  // 朗讀順序的物件名稱依賴 axe（accessible name／role），確保三件套已注入
+  await chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+  });
+  const injection = await chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: () => window.__rampA11yReadingOrder(),
+  });
+  return injection && injection[0] ? injection[0].result : null;
+}
+
+/** 產生單一朗讀停點的 HTML */
+function readingItemHtml(s) {
+  const roleTag = s.role ? `<span class="ro-role">${escapeHtml(s.role)}</span>` : '';
+  let body;
+  if (s.kind === 'object') {
+    const name = s.name
+      ? `<span class="ro-name">${escapeHtml(s.name)}</span>`
+      : s.nameRequired
+        ? '<span class="ro-noname">（無可朗讀名稱）</span>'
+        : '';
+    const states = s.states && s.states.length
+      ? ` <span class="ro-states">${s.states.map(escapeHtml).join('　')}</span>`
+      : '';
+    body = `<span class="ro-body">${name}${states}</span>`;
+  } else {
+    body = `<span class="ro-body ro-text">${escapeHtml(s.text || '')}</span>`;
+  }
+  const flag = s.flagged
+    ? '<span class="ro-flag" title="此停點在畫面上的左右位置與朗讀先後相反（視覺順序與朗讀順序落差，對應 WCAG 1.3.2）">順序落差</span>'
+    : '';
+  return `
+    <button class="ro-item${s.flagged ? ' flagged' : ''}" type="button" data-ro="${s.roIndex}"
+            title="點擊在頁面上高亮此處">
+      <span class="ro-seq">${s.roIndex + 1}</span>
+      ${roleTag}
+      ${body}
+      ${flag}
+    </button>`;
+}
+
+/** 渲染朗讀順序清單與摘要 */
+function renderReadingList(data) {
+  readingSummaryEl.hidden = false;
+  const flagText = data.flaggedCount
+    ? `・<span class="ro-flag-count">${data.flaggedCount} 個順序落差</span>`
+    : '・順序與畫面一致';
+  const truncText = data.truncated ? `・僅顯示前 ${data.total} 個` : '';
+  readingSummaryEl.innerHTML =
+    `螢幕報讀軟體（NVDA）會依此順序念出整頁　共 <strong>${data.total}</strong> 個朗讀停點 ${flagText} ${truncText}`;
+  issuesEl.innerHTML = data.stops.length
+    ? data.stops.map(readingItemHtml).join('')
+    : '<p class="ro-empty">此頁沒有可線性化的朗讀內容。</p>';
+  issuesEl.scrollTop = 0;
+}
+
+/** 切到朗讀順序模式（首次進入才抓資料，之後用快取） */
+async function enterReadingMode() {
+  setModeUI('reading');
+  if (readingData) { renderReadingList(readingData); return; }
+  readingSummaryEl.hidden = true;
+  issuesEl.innerHTML = '<p class="ro-loading">正在分析整頁朗讀順序…</p>';
+  try {
+    const data = await execReadingOrder();
+    if (!data) {
+      issuesEl.innerHTML = '<p class="ro-empty">無法取得朗讀順序，請按「重新檢測」後再試。</p>';
+      return;
+    }
+    readingData = data;
+    renderReadingList(data);
+  } catch (err) {
+    issuesEl.innerHTML = '<p class="ro-empty">分析朗讀順序時發生錯誤。</p>';
+  }
+}
+
+/** 呼叫頁面內依朗讀索引高亮（沿用掃描器補注入機制） */
+async function execHighlightRO(roIndex) {
+  const injection = await chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: (i) => (window.__rampA11yHighlightRO ? window.__rampA11yHighlightRO(i) : 'missing'),
+    args: [roIndex],
+  });
+  return injection && injection[0] ? injection[0].result : false;
+}
+
+async function highlightROonPage(roIndex) {
+  if (currentTabId == null) return false;
+  try {
+    let res = await execHighlightRO(roIndex);
+    if (res === 'missing') {
+      // 頁面曾重整：補注入掃描器並重建 data-ramp-ro 定位屬性後重試
+      await chrome.scripting.executeScript({ target: { tabId: currentTabId }, files: ['content/scanner.js'] });
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        func: () => window.__rampA11yReadingOrder && window.__rampA11yReadingOrder(),
+      });
+      res = await execHighlightRO(roIndex);
     }
     return res === true;
   } catch {
@@ -752,6 +887,18 @@ filterGroup.addEventListener('click', (e) => {
   rerender();
 });
 
+// 檢視模式切換：檢測問題 ↔ 朗讀順序
+modeTabs.addEventListener('click', (e) => {
+  const tab = e.target.closest('.mode-tab');
+  if (!tab || tab.dataset.mode === currentMode) return;
+  if (tab.dataset.mode === 'reading') {
+    enterReadingMode();
+  } else {
+    setModeUI('issues');
+    rerender(); // 以最後一次掃描結果重繪問題清單
+  }
+});
+
 // 人工複核自評變更（事件代理，自評選單為動態渲染）
 issuesEl.addEventListener('change', (e) => {
   const sel = e.target.closest('.review-select');
@@ -795,6 +942,34 @@ issuesEl.addEventListener('change', (e) => {
 
 // 展開／收合與元素高亮採事件代理，內容為動態渲染
 issuesEl.addEventListener('click', async (e) => {
+  // 朗讀順序停點 → 頁面高亮（再次點擊清除）
+  const roItem = e.target.closest('.ro-item');
+  if (roItem) {
+    if (roItem.classList.contains('active')) {
+      issuesEl.querySelectorAll('.ro-item.active').forEach((b) => b.classList.remove('active'));
+      if (currentTabId != null) {
+        chrome.scripting.executeScript({
+          target: { tabId: currentTabId },
+          func: () => window.__rampA11yClear && window.__rampA11yClear(),
+        });
+      }
+      return;
+    }
+    issuesEl.querySelectorAll('.ro-item.active').forEach((b) => b.classList.remove('active'));
+    const ok = await highlightROonPage(Number(roItem.dataset.ro));
+    if (ok) {
+      roItem.classList.add('active');
+    } else {
+      roItem.insertAdjacentHTML('afterend',
+        '<span class="node-hint">無法在頁面上定位（元素可能已變更，請重新檢測）</span>');
+      setTimeout(() => {
+        const hint = roItem.parentElement && roItem.parentElement.querySelector('.node-hint');
+        if (hint) hint.remove();
+      }, 3000);
+    }
+    return;
+  }
+
   // 展開／收合
   const header = e.target.closest('.issue-header');
   if (header) {

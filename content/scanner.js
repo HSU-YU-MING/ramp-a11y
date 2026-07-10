@@ -209,6 +209,168 @@
     };
   }
 
+  // ===== 朗讀順序預覽（第二階段）=====
+  // 把整頁「線性化」成螢幕報讀軟體實際念出的順序（NVDA 瀏覽模式依 DOM 順序走），
+  // 再比對視覺順序：標出同一視覺列上「畫面由左到右」與「朗讀先後」相反的落差
+  // （flex order、float:right、RTL 等造成的 WCAG 1.3.2「有意義順序」問題）。
+
+  const RO_SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'LINK', 'META']);
+  const RO_OBJECT_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'IMG', 'SVG', 'IFRAME', 'AUDIO', 'VIDEO', 'SUMMARY', 'AREA', 'CANVAS']);
+  const RO_WIDGET_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'slider', 'spinbutton', 'combobox', 'textbox', 'searchbox', 'option', 'img', 'progressbar', 'treeitem']);
+  const RO_OBJ_FALLBACK = { IFRAME: '框架', SVG: '圖形', AUDIO: '音訊', VIDEO: '視訊', SUMMARY: '摘要', CANVAS: '畫布', AREA: '熱區' };
+
+  function roIsHidden(el) {
+    if (el.closest && el.closest('[aria-hidden="true"]')) return true;
+    if (typeof el.checkVisibility === 'function') {
+      return !el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true });
+    }
+    const s = getComputedStyle(el);
+    return s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse';
+  }
+  function roIsObject(el) {
+    // 無 href 的 <a> 不是連結（NVDA 不當成獨立物件）
+    if (el.tagName === 'A' && !el.getAttribute('href') && !el.getAttribute('role')) return false;
+    if (RO_OBJECT_TAGS.has(el.tagName)) return true;
+    const r = el.getAttribute('role');
+    return !!(r && RO_WIDGET_ROLES.has(r.trim().split(/\s+/)[0]));
+  }
+  function roIsBlock(el) {
+    const d = getComputedStyle(el).display;
+    return d && d !== 'inline' && d !== 'inline-block' && d !== 'inline-flex' && d !== 'inline-grid' && d !== 'contents';
+  }
+  function roBlockRole(el) {
+    const t = el.tagName;
+    if (/^H[1-6]$/.test(t)) return '標題第 ' + t[1] + ' 級';
+    if (t === 'LI') return '清單項目';
+    if (t === 'TH') return '表頭儲存格';
+    if (t === 'TD') return '儲存格';
+    if (t === 'BLOCKQUOTE') return '引述';
+    if (t === 'FIGCAPTION') return '圖說';
+    if (t === 'DT') return '詞彙';
+    if (t === 'DD') return '釋義';
+    return '文字';
+  }
+  function roRect(el) {
+    const r = el.getBoundingClientRect();
+    return { top: r.top + window.scrollY, left: r.left + window.scrollX, w: r.width, h: r.height };
+  }
+  function roRangeRect(nodes) {
+    try {
+      const range = document.createRange();
+      range.setStartBefore(nodes[0]);
+      range.setEndAfter(nodes[nodes.length - 1]);
+      const r = range.getBoundingClientRect();
+      if (r.width || r.height) return { top: r.top + window.scrollY, left: r.left + window.scrollX, w: r.width, h: r.height };
+    } catch (e) { /* 保底 */ }
+    return null;
+  }
+
+  window.__rampA11yReadingOrder = function () {
+    // 清掉上次留下的定位屬性，避免索引錯亂
+    document.querySelectorAll('[data-ramp-ro]').forEach((e) => e.removeAttribute('data-ramp-ro'));
+
+    const MAX = 500;
+    const stops = [];
+    // nvdaPreview 依賴 axe 虛擬樹（getRole／accessibleText），需先 setup 重建
+    let didSetup = false;
+    try {
+      if (window.axe && typeof window.axe.setup === 'function') { window.axe.setup(document); didSetup = true; }
+    } catch (e) { /* setup 失敗仍可線性化，物件名稱改用保底 */ }
+
+    let buf = '', bufNodes = [], bufEl = null;
+    function flush() {
+      const text = buf.replace(/\s+/g, ' ').trim();
+      const nodes = bufNodes, el = bufEl;
+      buf = ''; bufNodes = []; bufEl = null;
+      if (!text || !el || stops.length >= MAX) return;
+      const roIndex = stops.length;
+      try { el.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
+      stops.push({
+        roIndex, kind: 'text', role: roBlockRole(el),
+        text: text.slice(0, 140), name: null, nameRequired: false, states: [],
+        flagged: false, rect: roRangeRect(nodes) || roRect(el),
+      });
+    }
+    function pushObject(c) {
+      if (stops.length >= MAX) return;
+      flush(); // 物件前的文字先斷句，維持朗讀先後
+      const roIndex = stops.length;
+      let name = null, role = null, states = [], nameRequired = false;
+      const nv = nvdaPreview(c);
+      if (nv) { name = nv.name; role = nv.role || nv.roleEn; states = nv.states; nameRequired = nv.nameRequired; }
+      else { role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase(); } // getRole 無角色時的保底
+      try { c.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
+      stops.push({ roIndex, kind: 'object', role, text: null, name, nameRequired, states, flagged: false, rect: roRect(c) });
+    }
+    function walk(el, blockEl) {
+      for (let c = el.firstChild; c && stops.length < MAX; c = c.nextSibling) {
+        if (c.nodeType === 3) { // 文字節點：累積到目前區塊的朗讀緩衝
+          if (c.nodeValue && c.nodeValue.trim()) { if (!bufEl) bufEl = blockEl; bufNodes.push(c); buf += c.nodeValue; }
+          continue;
+        }
+        if (c.nodeType !== 1) continue;
+        if (RO_SKIP_TAGS.has(c.tagName) || roIsHidden(c)) continue;
+        if (roIsObject(c)) { pushObject(c); continue; } // 物件為獨立停點，不深入其子樹
+        const blk = roIsBlock(c);
+        if (blk) flush();                 // 進入區塊前先斷句
+        walk(c, blk ? c : blockEl);
+        if (blk) flush();                 // 離開區塊後再斷句
+      }
+    }
+    try { walk(document.body, document.body); flush(); }
+    finally { if (didSetup) { try { window.axe.teardown(); } catch (e) { /* 忽略 */ } } }
+
+    // 視覺順序比對：把有幾何範圍的停點依 top 分列（容差 TOL），同一列內依 left 排序即
+    // 「畫面由左到右」。若同列中左邊的停點朗讀順序反而在後 → 視覺與朗讀順序落差。
+    const R = stops.filter((s) => s.rect && s.rect.w > 0 && s.rect.h > 0);
+    R.forEach((s, k) => { s._read = k; });
+    const sorted = R.slice().sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    const TOL = 14;
+    const rows = []; let cur = null;
+    for (const s of sorted) {
+      if (!cur || s.rect.top - cur.top0 > TOL) { cur = { top0: s.rect.top, items: [s] }; rows.push(cur); }
+      else cur.items.push(s);
+    }
+    let flaggedCount = 0;
+    for (const r of rows) {
+      r.items.sort((a, b) => a.rect.left - b.rect.left);
+      for (let j = 0; j < r.items.length - 1; j++) {
+        if (r.items[j]._read > r.items[j + 1]._read) {
+          if (!r.items[j].flagged) { r.items[j].flagged = true; flaggedCount++; }
+          if (!r.items[j + 1].flagged) { r.items[j + 1].flagged = true; flaggedCount++; }
+        }
+      }
+    }
+
+    return {
+      url: location.href,
+      total: stops.length,
+      truncated: stops.length >= MAX,
+      flaggedCount,
+      stops: stops.map((s) => ({
+        roIndex: s.roIndex, kind: s.kind, role: s.role,
+        name: s.name != null ? s.name : null, nameRequired: !!s.nameRequired,
+        text: s.text != null ? s.text : null, states: s.states || [], flagged: !!s.flagged,
+      })),
+    };
+  };
+
+  // 依朗讀順序索引高亮頁面上的對應元素（沿用高亮樣式與捲動行為）
+  window.__rampA11yHighlightRO = function (roIndex) {
+    try {
+      window.__rampA11yClear();
+      ensureStyle();
+      const el = document.querySelector('[data-ramp-ro="' + roIndex + '"]');
+      if (!el) return false;
+      el.classList.add(HIGHLIGHT_CLASS);
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
   /**
    * 執行 axe 掃描（JavaScript 執行後的實際 DOM），
    * 只回傳可序列化的純資料（executeScript 的結果必須可 JSON 化）。

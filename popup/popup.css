@@ -590,6 +590,122 @@ body {
   overflow-wrap: break-word;
 }
 
+/* ===== 檢視模式切換（檢測問題／朗讀順序）===== */
+.mode-tabs {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+  background: var(--color-surface);
+}
+
+.mode-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mode-tab.active {
+  background: var(--color-bg);
+  color: var(--color-brand);
+  border-color: var(--color-border);
+  position: relative;
+  top: 1px;
+}
+
+/* 朗讀順序摘要列 */
+.reading-summary {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.reading-summary strong { color: var(--color-text); font-size: 14px; }
+.ro-flag-count { color: var(--color-level-aa); font-weight: 700; }
+
+/* 朗讀順序停點 */
+.ro-loading, .ro-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.ro-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ro-item:hover { border-color: var(--color-btn-secondary); background: var(--color-hover-brand); }
+.ro-item.active { border-color: var(--color-btn-secondary); background: var(--color-active-brand); }
+
+/* 落差項目：左緣色條＋琥珀強調 */
+.ro-item.flagged { border-left: 3px solid var(--color-level-aa); }
+
+.ro-seq {
+  flex-shrink: 0;
+  min-width: 1.7em;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+.ro-role {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.ro-body { flex: 1; overflow-wrap: break-word; word-break: break-word; }
+.ro-name { font-weight: 600; }
+.ro-noname { font-weight: 700; color: var(--color-danger); }
+.ro-states { color: var(--color-brand); font-weight: 600; }
+.ro-text { color: var(--color-text); }
+
+.ro-flag {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-level-aa);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ro-states { color: var(--color-btn-secondary); }
+}
+
 /* ===== 減少動態效果（工具自身遵守 a11y）===== */
 @media (prefers-reduced-motion: reduce) {
   .spinner {

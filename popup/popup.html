@@ -44,6 +44,11 @@
 
     <!-- 狀態三：結果面板 -->
     <section id="view-results" class="view" hidden>
+      <!-- 檢視模式切換：檢測問題／朗讀順序 -->
+      <div id="mode-tabs" class="mode-tabs" role="tablist" aria-label="檢視模式">
+        <button class="mode-tab active" type="button" data-mode="issues" role="tab" aria-selected="true">檢測問題</button>
+        <button class="mode-tab" type="button" data-mode="reading" role="tab" aria-selected="false">朗讀順序</button>
+      </div>
       <!-- 頂部統計列（固定不捲動） -->
       <div id="stats" class="stats" aria-live="polite"></div>
       <!-- 工具列：結果篩選與目標等級 -->
@@ -63,7 +68,9 @@
       </div>
       <!-- 快取還原提示（僅還原上次結果時顯示） -->
       <p id="cache-note" class="cache-note" hidden></p>
-      <!-- 可捲動的問題清單 -->
+      <!-- 朗讀順序模式的摘要列（僅朗讀順序模式顯示） -->
+      <p id="reading-summary" class="reading-summary" hidden></p>
+      <!-- 可捲動內容區（檢測問題清單／朗讀順序清單共用） -->
       <div id="issues" class="issues" tabindex="-1"></div>
       <!-- 底部：匯出報告＋重新檢測 -->
       <footer class="results-footer">

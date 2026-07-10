@@ -275,6 +275,25 @@ async function openPopup(browser, sw) {
     check('T12 人工複核自評持久化', rv === 'pass', 'value=' + rv);
     await popup3.close();
 
+    // ===== T14：朗讀順序線性化＋視覺順序落差偵測 =====
+    await page.goto(`http://127.0.0.1:${PORT}/reading-order-fixture.html`, { waitUntil: 'load' });
+    await page.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
+    await page.addScriptTag({ path: path.join(REPO, 'vendor/axe-locale-zh_TW.js') });
+    await page.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
+    const ro = await page.evaluate(() => window.__rampA11yReadingOrder());
+    check('T14 朗讀順序線性化', ro.total >= 10 && /標題第 1/.test(ro.stops[0].role || ''), ro.total + ' 個停點');
+    // 行內連結應插在段落文字中間（前後皆為文字停點）
+    const linkIdx = ro.stops.findIndex((s) => s.kind === 'object' && s.name === '行內連結');
+    check('T14a 行內連結插在文字中間',
+      linkIdx > 0 && ro.stops[linkIdx - 1].kind === 'text' && (ro.stops[linkIdx + 1] || {}).kind === 'text', 'idx=' + linkIdx);
+    // aria-hidden 段不得出現在朗讀順序中
+    check('T14b aria-hidden 段排除', !ro.stops.some((s) => (s.text || '').includes('aria-hidden 隱藏')));
+    // flex order 造成的同列反序 → 兩段標為落差
+    const flagged = ro.stops.filter((s) => s.flagged);
+    check('T14c 視覺順序落差偵測',
+      ro.flaggedCount === 2 && flagged.length === 2 && flagged.every((s) => (s.text || '').includes('DOM 第')),
+      'flaggedCount=' + ro.flaggedCount);
+
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();
