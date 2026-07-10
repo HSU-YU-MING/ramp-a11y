@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>NVDA 報讀預覽測試頁（值／位置／項目數／描述）</title>
+  <style>body { font-family: sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+    label { display: block; margin-top: 12px; }</style>
+</head>
+<body>
+  <h1>NVDA 報讀預覽測試頁</h1>
+
+  <label for="vol">音量</label>
+  <input type="range" id="vol" min="0" max="100" value="30" />
+
+  <!-- 進度列：無標籤，重點在值「百分之 75」 -->
+  <progress id="prog" max="100" value="75"></progress>
+
+  <label for="city">城市</label>
+  <select id="city">
+    <option>台北</option>
+    <option selected>台中</option>
+    <option>高雄</option>
+  </select>
+
+  <label for="acc">帳號</label>
+  <input type="text" id="acc" value="user123" aria-describedby="acc-hint" />
+  <span id="acc-hint">請輸入 6 到 12 個英數字</span>
+
+  <label for="hobby">興趣（可複選）</label>
+  <select id="hobby" multiple size="3">
+    <option>閱讀</option>
+    <option>運動</option>
+    <option>音樂</option>
+  </select>
+
+  <!-- 分頁：aria-posinset/setsize → 位置「5 之 2」 -->
+  <div role="tablist">
+    <div role="tab" aria-posinset="2" aria-setsize="5" tabindex="0">分頁乙</div>
+  </div>
+
+  <button type="button" aria-haspopup="menu" aria-expanded="false">更多</button>
+
+  <label for="note">備註</label>
+  <textarea id="note" aria-multiline="true"></textarea>
+</body>
+</html>

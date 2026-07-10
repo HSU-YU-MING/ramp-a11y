@@ -156,13 +156,116 @@
     if (el.readOnly || truthy(attr('aria-readonly'))) states.push('唯讀');
     // 輸入無效
     if (truthy(attr('aria-invalid'))) states.push('無效的輸入');
+    // 多行編輯區
+    if (el.tagName === 'TEXTAREA' || attr('aria-multiline') === 'true') states.push('多行');
+    // 自動完成
+    const ac = attr('aria-autocomplete');
+    if (ac && ac !== 'none') states.push('有自動完成');
+    // 有子選單／彈出（僅 menu／true 用「子功能表」，其他 popup 型別不臆測）
+    const hp = attr('aria-haspopup');
+    if (hp === 'true' || hp === 'menu') states.push('子功能表');
+    // 欄標題排序狀態
+    const sort = attr('aria-sort');
+    if (sort === 'ascending') states.push('遞增排序');
+    else if (sort === 'descending') states.push('遞減排序');
+    else if (sort === 'other') states.push('已排序');
+    // 忙碌
+    if (attr('aria-busy') === 'true') states.push('忙碌中');
     // 目前項目（aria-current）
     if (truthy(attr('aria-current'))) states.push('目前');
     return states;
   }
 
   /**
-   * 計算單一元素的 NVDA 報讀預覽 { name, role, roleEn, states }。
+   * 元素的「值」——NVDA 會念出的目前內容：
+   * 編輯區的輸入內容、下拉的選中項、滑桿/微調的數值、進度列的百分比。
+   */
+  function nvdaValue(el, roleEn) {
+    const attr = (n) => el.getAttribute(n);
+    if (roleEn === 'progressbar' || roleEn === 'meter' || el.tagName === 'PROGRESS' || el.tagName === 'METER') {
+      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
+      let now = attr('aria-valuenow'), min = attr('aria-valuemin'), max = attr('aria-valuemax');
+      if (now == null && el.value != null && el.value !== '') now = String(el.value);
+      if (min == null && (el.tagName === 'PROGRESS' || el.tagName === 'METER')) min = String(el.min != null ? el.min : 0);
+      if (max == null && (el.tagName === 'PROGRESS' || el.tagName === 'METER')) max = String(el.max != null ? el.max : 1);
+      const n = parseFloat(now), lo = parseFloat(min), hi = parseFloat(max);
+      if (!isNaN(n) && !isNaN(lo) && !isNaN(hi) && hi > lo) return '百分之 ' + Math.round(((n - lo) / (hi - lo)) * 100);
+      return !isNaN(n) ? String(n) : null;
+    }
+    if (roleEn === 'slider' || roleEn === 'spinbutton') {
+      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
+      const now = attr('aria-valuenow'); if (now != null) return now.trim();
+      return el.value != null && el.value !== '' ? String(el.value) : null;
+    }
+    if (el.tagName === 'SELECT') {
+      const opt = el.selectedOptions && el.selectedOptions[0];
+      return opt ? (opt.textContent || '').trim() || null : null;
+    }
+    if (roleEn === 'combobox') {
+      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
+      return el.value != null && String(el.value).trim() ? String(el.value).trim() : null;
+    }
+    if (roleEn === 'textbox' || roleEn === 'searchbox') {
+      if (el.type === 'password') return null; // 密碼欄不朗讀內容
+      const v = (el.value != null ? String(el.value) : '').trim();
+      return v || null;
+    }
+    return null;
+  }
+
+  /** 集合位置「{總數} 之 {序位}」（aria-posinset/setsize，或原生 li/option/radio 計算） */
+  function nvdaPosition(el, roleEn) {
+    const pos = parseInt(el.getAttribute('aria-posinset'), 10);
+    const size = parseInt(el.getAttribute('aria-setsize'), 10);
+    if (!isNaN(pos) && !isNaN(size) && size > 0) return size + ' 之 ' + pos;
+    const parent = el.parentElement;
+    if (el.tagName === 'LI' && parent && /^(UL|OL|MENU)$/.test(parent.tagName)) {
+      const items = Array.prototype.filter.call(parent.children, (c) => c.tagName === 'LI');
+      const i = items.indexOf(el); if (i >= 0) return items.length + ' 之 ' + (i + 1);
+    }
+    if (el.tagName === 'OPTION') {
+      const sel = el.closest('select');
+      if (sel) { const opts = Array.prototype.slice.call(sel.querySelectorAll('option')); const i = opts.indexOf(el); if (i >= 0) return opts.length + ' 之 ' + (i + 1); }
+    }
+    if (roleEn === 'radio' && el.name) {
+      const nm = window.CSS && CSS.escape ? CSS.escape(el.name) : el.name;
+      const radios = Array.prototype.slice.call(document.querySelectorAll('input[type="radio"][name="' + nm + '"]'));
+      const i = radios.indexOf(el); if (i >= 0) return radios.length + ' 之 ' + (i + 1);
+    }
+    return null;
+  }
+
+  /** 清單／清單方塊的項目數「有 N 項」（NVDA 進入清單時會報項目數） */
+  function nvdaItemCount(el, roleEn) {
+    let n = 0;
+    if (roleEn === 'list') {
+      n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
+        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+        : el.querySelectorAll('[role="listitem"]').length;
+    } else if (roleEn === 'listbox') {
+      n = el.tagName === 'SELECT' ? el.querySelectorAll('option').length : el.querySelectorAll('[role="option"]').length;
+    }
+    return n > 0 ? '有 ' + n + ' 項' : null;
+  }
+
+  /** 描述——NVDA 會在名稱／角色之後補念的說明（aria-describedby，或 title） */
+  function nvdaDescription(el, name) {
+    const ref = el.getAttribute('aria-describedby');
+    if (ref) {
+      const txt = ref.trim().split(/\s+/).map((id) => {
+        const t = document.getElementById(id);
+        return t ? (t.textContent || '').trim() : '';
+      }).filter(Boolean).join(' ');
+      if (txt) return txt.slice(0, 100);
+    }
+    const title = (el.getAttribute('title') || '').trim();
+    if (title && title !== name) return title.slice(0, 100); // title 非名稱來源時作描述
+    return null;
+  }
+
+  /**
+   * 計算單一元素的 NVDA 報讀預覽
+   * { name, role, roleEn, nameRequired, value, states, position, itemCount, description }。
    * 依賴 axe.commons（vendor/axe.min.js 注入後可用）；不可用或計算失敗時
    * 回傳 null，UI 直接略過不顯示，不影響其他結果。
    */
@@ -200,12 +303,17 @@
     // 顯示「NVDA 朗讀」反而誤導，略過不顯示。
     if (!roleZh && !announcedRoleEn) return null;
 
+    const value = nvdaValue(el, announcedRoleEn);
     return {
       name: name || null,                     // null 表示無可朗讀名稱
       role: roleZh,                           // 已核對的中文角色（含標題階層）；null 表示未收錄
       roleEn: roleZh ? null : announcedRoleEn, // 未收錄時保留英文 role 供 UI 標示，不杜撰中文
       nameRequired,                           // 此角色是否必須有名稱（決定是否顯示「無可朗讀名稱」）
+      value: value ? value.slice(0, 60) : null, // 目前值／內容（編輯區、下拉、滑桿、進度）
       states: nvdaStates(el),
+      position: nvdaPosition(el, announcedRoleEn),   // 集合位置「N 之 M」
+      itemCount: nvdaItemCount(el, announcedRoleEn), // 清單項目數「有 N 項」
+      description: nvdaDescription(el, name),         // aria-describedby／title 描述
     };
   }
 
@@ -215,7 +323,7 @@
   // （flex order、float:right、RTL 等造成的 WCAG 1.3.2「有意義順序」問題）。
 
   const RO_SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'LINK', 'META']);
-  const RO_OBJECT_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'IMG', 'SVG', 'IFRAME', 'AUDIO', 'VIDEO', 'SUMMARY', 'AREA', 'CANVAS']);
+  const RO_OBJECT_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'IMG', 'SVG', 'IFRAME', 'AUDIO', 'VIDEO', 'SUMMARY', 'AREA', 'CANVAS', 'PROGRESS', 'METER']);
   const RO_WIDGET_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'slider', 'spinbutton', 'combobox', 'textbox', 'searchbox', 'option', 'img', 'progressbar', 'treeitem']);
   const RO_OBJ_FALLBACK = { IFRAME: '框架', SVG: '圖形', AUDIO: '音訊', VIDEO: '視訊', SUMMARY: '摘要', CANVAS: '畫布', AREA: '熱區' };
 
@@ -296,11 +404,15 @@
       flush(); // 物件前的文字先斷句，維持朗讀先後
       const roIndex = stops.length;
       let name = null, role = null, states = [], nameRequired = false;
+      let value = null, position = null, itemCount = null, description = null;
       const nv = nvdaPreview(c);
-      if (nv) { name = nv.name; role = nv.role || nv.roleEn; states = nv.states; nameRequired = nv.nameRequired; }
-      else { role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase(); } // getRole 無角色時的保底
+      if (nv) {
+        name = nv.name; role = nv.role || nv.roleEn; states = nv.states; nameRequired = nv.nameRequired;
+        value = nv.value; position = nv.position; itemCount = nv.itemCount; description = nv.description;
+      } else { role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase(); } // getRole 無角色時的保底
       try { c.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
-      stops.push({ roIndex, kind: 'object', role, text: null, name, nameRequired, states, flagged: false, rect: roRect(c) });
+      stops.push({ roIndex, kind: 'object', role, text: null, name, nameRequired, states,
+        value, position, itemCount, description, flagged: false, rect: roRect(c) });
     }
     function walk(el, blockEl) {
       for (let c = el.firstChild; c && stops.length < MAX; c = c.nextSibling) {
@@ -351,6 +463,8 @@
         roIndex: s.roIndex, kind: s.kind, role: s.role,
         name: s.name != null ? s.name : null, nameRequired: !!s.nameRequired,
         text: s.text != null ? s.text : null, states: s.states || [], flagged: !!s.flagged,
+        value: s.value != null ? s.value : null, position: s.position != null ? s.position : null,
+        itemCount: s.itemCount != null ? s.itemCount : null, description: s.description != null ? s.description : null,
       })),
     };
   };

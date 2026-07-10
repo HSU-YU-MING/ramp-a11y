@@ -524,6 +524,25 @@ body {
   font-weight: 600;
 }
 
+/* 值（輸入內容／選中項／數值／百分比）：以引號框住，和名稱區隔 */
+.nvda-value {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.nvda-value::before { content: "「"; color: var(--color-text-muted); font-weight: 400; }
+.nvda-value::after { content: "」"; color: var(--color-text-muted); font-weight: 400; }
+
+/* 位置／項目數 */
+.nvda-pos {
+  color: var(--color-text-muted);
+  font-size: 0.95em;
+}
+
+/* 描述（aria-describedby）：括號、次要色 */
+.nvda-desc { color: var(--color-text-muted); }
+.nvda-desc::before { content: "（"; }
+.nvda-desc::after { content: "）"; }
+
 @media (prefers-color-scheme: dark) {
   .nvda-states { color: var(--color-btn-secondary); } /* teal-300，深底對比足 */
 }

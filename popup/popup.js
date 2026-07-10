@@ -347,13 +347,19 @@ function nvdaLineHtml(nvda) {
     : nvda.roleEn
       ? `<span class="nvda-role nvda-role-en" title="NVDA 官方翻譯尚未收錄此角色，顯示原始 role">${escapeHtml(nvda.roleEn)}</span>`
       : '';
+  const value = nvda.value ? `<span class="nvda-value">${escapeHtml(nvda.value)}</span>` : '';
   const states = nvda.states && nvda.states.length
     ? `<span class="nvda-states">${nvda.states.map(escapeHtml).join('　')}</span>`
     : '';
-  // role 與 name 皆空（如純文字節點）時不顯示整行，避免噪音
-  if (!nvda.name && !nvda.role && !nvda.roleEn && !(nvda.states && nvda.states.length)) return '';
-  return `<p class="nvda-line" title="模擬 NVDA 螢幕報讀軟體會如何念出此元素（角色／狀態用詞取自 NVDA 官方正體中文）">
-            <span class="nvda-tag" aria-hidden="true">🔊 NVDA</span>${name} ${role} ${states}
+  const position = nvda.position ? `<span class="nvda-pos">${escapeHtml(nvda.position)}</span>` : '';
+  const itemCount = nvda.itemCount ? `<span class="nvda-pos">${escapeHtml(nvda.itemCount)}</span>` : '';
+  const desc = nvda.description ? `<span class="nvda-desc">${escapeHtml(nvda.description)}</span>` : '';
+  const hasAny = nvda.name || nvda.role || nvda.roleEn || value || (nvda.states && nvda.states.length)
+    || position || itemCount || desc;
+  if (!hasAny) return ''; // 無任何可念資訊（如純文字節點）不顯示整行
+  // 依 NVDA 朗讀次序：名稱 → 角色 → 值 → 狀態 → 位置 → 項目數 → 描述
+  return `<p class="nvda-line" title="模擬 NVDA 螢幕報讀軟體會如何念出此元素（角色／狀態／值等用詞取自 NVDA 官方正體中文）">
+            <span class="nvda-tag" aria-hidden="true">🔊 NVDA</span>${name} ${role} ${value} ${states} ${position} ${itemCount} ${desc}
           </p>`;
 }
 
@@ -608,10 +614,13 @@ function readingItemHtml(s) {
       : s.nameRequired
         ? '<span class="ro-noname">（無可朗讀名稱）</span>'
         : '';
+    const value = s.value ? ` <span class="nvda-value">${escapeHtml(s.value)}</span>` : '';
     const states = s.states && s.states.length
       ? ` <span class="ro-states">${s.states.map(escapeHtml).join('　')}</span>`
       : '';
-    body = `<span class="ro-body">${name}${states}</span>`;
+    const extra = [s.position, s.itemCount].filter(Boolean).map(escapeHtml).join('　');
+    const extraHtml = extra ? ` <span class="nvda-pos">${extra}</span>` : '';
+    body = `<span class="ro-body">${name}${value}${states}${extraHtml}</span>`;
   } else {
     body = `<span class="ro-body ro-text">${escapeHtml(s.text || '')}</span>`;
   }
@@ -701,7 +710,11 @@ function reportNvdaHtml(nvda) {
   else if (nvda.nameRequired) parts.push('（無可朗讀名稱）');
   if (nvda.role) parts.push(nvda.role);
   else if (nvda.roleEn) parts.push(nvda.roleEn);
+  if (nvda.value) parts.push(nvda.value);
   if (nvda.states && nvda.states.length) parts.push(nvda.states.join('　'));
+  if (nvda.position) parts.push(nvda.position);
+  if (nvda.itemCount) parts.push(nvda.itemCount);
+  if (nvda.description) parts.push('（' + nvda.description + '）');
   if (!parts.length) return '';
   return `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(parts.join('　'))}</p>`;
 }

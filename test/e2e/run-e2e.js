@@ -294,6 +294,32 @@ async function openPopup(browser, sw) {
       ro.flaggedCount === 2 && flagged.length === 2 && flagged.every((s) => (s.text || '').includes('DOM 第')),
       'flaggedCount=' + ro.flaggedCount);
 
+    // ===== T15：NVDA 報讀預覽的值／位置／項目數／描述／進階狀態 =====
+    await page.goto(`http://127.0.0.1:${PORT}/nvda-fixture.html`, { waitUntil: 'load' });
+    await page.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
+    await page.addScriptTag({ path: path.join(REPO, 'vendor/axe-locale-zh_TW.js') });
+    await page.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
+    const nv = await page.evaluate(() => window.__rampA11yReadingOrder());
+    const objs = nv.stops.filter((s) => s.kind === 'object');
+    const find = (pred) => objs.find(pred) || {};
+    const slider = find((s) => s.role === '滑桿');
+    const prog = find((s) => s.role === '進度列');
+    const city = find((s) => s.name === '城市');
+    const acc = find((s) => s.value === 'user123');
+    const hobby = find((s) => s.itemCount);
+    const tab = find((s) => s.position);
+    const more = find((s) => s.name === '更多');
+    const note = find((s) => (s.states || []).includes('多行'));
+    check('T15 滑桿值', slider.value === '30', 'value=' + slider.value);
+    check('T15a 進度列百分比', prog.value === '百分之 75', 'value=' + prog.value);
+    check('T15b 下拉選中項', city.value === '台中', 'value=' + city.value);
+    check('T15c 編輯區描述', acc.description === '請輸入 6 到 12 個英數字', 'desc=' + acc.description);
+    check('T15d 清單項目數', hobby.itemCount === '有 3 項', 'count=' + hobby.itemCount);
+    check('T15e 集合位置', tab.position === '5 之 2', 'pos=' + tab.position);
+    check('T15f 子功能表＋折疊狀態',
+      (more.states || []).includes('子功能表') && (more.states || []).includes('折疊'), JSON.stringify(more.states));
+    check('T15g 多行狀態', note.name === '備註', 'name=' + note.name);
+
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();
