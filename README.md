@@ -154,4 +154,5 @@ npm test        # 需本機安裝 Chrome；可用 CHROME_PATH 環境變數指定
 
 ## 授權與致謝
 
+- 本專案程式碼以 [MIT License](LICENSE) 授權。
 - 檢測引擎：[axe-core](https://github.com/dequelabs/axe-core) **v4.10.3**（MPL-2.0），以本地檔案形式打包於 `vendor/axe.min.js`。升級 axe 版本時請一併校對 `data/rules-map.json` 的規則異動。
