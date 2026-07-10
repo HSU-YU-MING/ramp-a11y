@@ -145,6 +145,27 @@ async function openPopup(browser, sw) {
     check('T3d link-in-text-block 有出現', titles.includes('連結僅以顏色區辨'));
     check('T3e target-size 對應 2.5.8 有出現', titles.includes('可點擊目標尺寸不足'));
 
+    // ===== T13：NVDA 報讀預覽（名稱＋角色，用詞取自 NVDA 官方 zh_TW）=====
+    // 節點內容即使在收合的 issue-body 中仍存在於 DOM，可直接查詢。
+    const nvdaLines = await popup.$$eval('.nvda-line', (els) =>
+      els.map((e) => e.innerText.replace(/\s+/g, ' ').trim())
+    );
+    const anyLine = (kw) => nvdaLines.some((l) => l.includes(kw));
+    // 有算出預覽（若 axe.commons API 路徑錯誤，nvdaPreview 會回 null，這裡會是 0 行）
+    check('T13 NVDA 報讀預覽有渲染', nvdaLines.length > 0, nvdaLines.length + ' 行');
+    // 無名元素以「（無可朗讀名稱）」呈現（button-name / link-name / image-alt / label）
+    check('T13a 無名元素標示無可朗讀名稱', anyLine('無可朗讀名稱'));
+    // 各角色用詞正確（按鈕 / 連結 / 圖片 / 編輯 / 核取方塊）
+    check('T13b 角色「按鈕」正確', anyLine('按鈕'));
+    check('T13c 角色「連結」正確', anyLine('連結'));
+    check('T13d 角色「圖片」正確', anyLine('圖片'));
+    check('T13e 角色「編輯」正確', anyLine('編輯'));
+    check('T13f 角色「核取方塊」正確', anyLine('核取方塊'));
+    // 有名稱者念出名稱＋角色（fixture 第 14 區 aria-label 的迷你按鈕）
+    check('T13g 具名元素念出名稱＋角色',
+      nvdaLines.some((l) => l.includes('關閉') && l.includes('按鈕')),
+      nvdaLines.find((l) => l.includes('關閉')) || '(無)');
+
     // ===== T10：目標等級篩選（預設 AA；切到 A 後 AA 項目應移入「超出目標等級」）=====
     await popup.select('#level-select', 'A');
     await sleep(300);

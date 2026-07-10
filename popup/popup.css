@@ -476,6 +476,58 @@ body {
   word-break: break-all;
 }
 
+/* 模擬 NVDA 報讀那一行（讓看得見的開發者「聽見」畫面） */
+.nvda-line {
+  margin: 4px 0 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-hover-brand);
+  border-radius: 6px;
+  overflow-wrap: break-word;
+}
+
+.nvda-tag {
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-brand);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 有名稱：一般文字；無名稱：醒目提示（無名按鈕／連結的核心痛點） */
+.nvda-name {
+  font-weight: 600;
+}
+
+.nvda-noname {
+  font-weight: 700;
+  color: var(--color-danger); /* 兩種模式對比皆 ≥ 4.5:1 */
+}
+
+.nvda-role {
+  color: var(--color-text-muted);
+}
+
+/* 官方翻譯未收錄的角色，以英文原始 role 呈現並加虛線底線標示 */
+.nvda-role-en {
+  font-family: Consolas, "Courier New", monospace;
+  border-bottom: 1px dotted var(--color-text-muted);
+}
+
+.nvda-states {
+  color: var(--color-brand);
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .nvda-states { color: var(--color-btn-secondary); } /* teal-300，深底對比足 */
+}
+
 .node-hint {
   margin-top: 4px;
   font-size: 12px;

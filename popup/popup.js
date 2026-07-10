@@ -324,6 +324,34 @@ function renderStats(violations, bpCount, incompleteCount) {
 }
 
 /**
+ * 模擬 NVDA 報讀那一行（popup 用）。
+ * nvda 為 scanner 端算好的 { name, role, roleEn, states }；無資料時回傳空字串。
+ * 名稱為空 → 以醒目樣式顯示「（無可朗讀名稱）」，這正是無名按鈕／連結的核心痛點。
+ */
+function nvdaLineHtml(nvda) {
+  if (!nvda) return '';
+  // 名稱：有名稱→念出；無名稱且此角色「必須有名稱」→醒目提示；否則（結構角色）不提示
+  const name = nvda.name
+    ? `<span class="nvda-name">${escapeHtml(nvda.name)}</span>`
+    : nvda.nameRequired
+      ? '<span class="nvda-noname">（無可朗讀名稱）</span>'
+      : '';
+  const role = nvda.role
+    ? `<span class="nvda-role">${escapeHtml(nvda.role)}</span>`
+    : nvda.roleEn
+      ? `<span class="nvda-role nvda-role-en" title="NVDA 官方翻譯尚未收錄此角色，顯示原始 role">${escapeHtml(nvda.roleEn)}</span>`
+      : '';
+  const states = nvda.states && nvda.states.length
+    ? `<span class="nvda-states">${nvda.states.map(escapeHtml).join('　')}</span>`
+    : '';
+  // role 與 name 皆空（如純文字節點）時不顯示整行，避免噪音
+  if (!nvda.name && !nvda.role && !nvda.roleEn && !(nvda.states && nvda.states.length)) return '';
+  return `<p class="nvda-line" title="模擬 NVDA 螢幕報讀軟體會如何念出此元素（角色／狀態用詞取自 NVDA 官方正體中文）">
+            <span class="nvda-tag" aria-hidden="true">🔊 NVDA</span>${name} ${role} ${states}
+          </p>`;
+}
+
+/**
  * 產生單一問題項目的 HTML
  * @param {boolean} isReview 是否為「需人工複核」項目（顯示自評選單）
  */
@@ -336,6 +364,7 @@ function issueHtml(item, badgeClass, badgeText, isReview) {
                   title="點擊在頁面上高亮此元素">
             ${escapeHtml(n.target)}
           </button>
+          ${nvdaLineHtml(n.nvda)}
           ${n.html ? `<code class="node-html">${escapeHtml(n.html.slice(0, 120))}${n.html.length > 120 ? '…' : ''}</code>` : ''}
         </li>`
     )
@@ -529,6 +558,19 @@ async function highlightOnPage(selector) {
 
 // ===== 報告匯出 =====
 
+/** 報告中的 NVDA 報讀預覽（純文字、可列印） */
+function reportNvdaHtml(nvda) {
+  if (!nvda) return '';
+  const parts = [];
+  if (nvda.name) parts.push(nvda.name);
+  else if (nvda.nameRequired) parts.push('（無可朗讀名稱）');
+  if (nvda.role) parts.push(nvda.role);
+  else if (nvda.roleEn) parts.push(nvda.roleEn);
+  if (nvda.states && nvda.states.length) parts.push(nvda.states.join('　'));
+  if (!parts.length) return '';
+  return `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(parts.join('　'))}</p>`;
+}
+
 /** 報告中的單一問題區塊 */
 function reportIssueHtml(item, badgeText, isReview) {
   const impactText = item.impact
@@ -546,7 +588,7 @@ function reportIssueHtml(item, badgeText, isReview) {
     : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
 
   const nodes = item.nodes
-    .map((n) => `<li><code>${escapeHtml(n.target)}</code>${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`)
+    .map((n) => `<li><code>${escapeHtml(n.target)}</code>${reportNvdaHtml(n.nvda)}${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`)
     .join('');
   const more = item.nodeCount > item.nodes.length
     ? `<p class="more">（共 ${item.nodeCount} 個受影響元素，僅列出前 ${item.nodes.length} 個）</p>`
@@ -632,6 +674,7 @@ function buildReportHtml(scan) {
   .nodes code { font-size: 12px; word-break: break-all; }
   .nodes pre { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 4px;
                padding: 4px 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; margin: 2px 0 8px; }
+  .nodes .nvda { font-size: 12px; color: #0F766E; margin: 2px 0 4px; }
   .disclaimer { margin-top: 32px; padding: 12px 16px; background: #FEF9C3; border-radius: 8px;
                 font-size: 13px; color: #713F12; }
 </style>
