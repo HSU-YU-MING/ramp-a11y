@@ -170,6 +170,10 @@
     const commons = window.axe && window.axe.commons;
     if (!el || !commons || !commons.text || !commons.aria) return null;
 
+    // aria-hidden="true"（含任一祖先）的元素被排除在無障礙樹外，NVDA 完全不朗讀，
+    // 顯示報讀預覽會誤導。注意 aria-hidden=""（空字串、無效值）不符此選擇器，維持顯示。
+    if (el.closest && el.closest('[aria-hidden="true"]')) return null;
+
     let name = '';
     let roleEn = null;
     try { name = (commons.text.accessibleText(el) || '').trim(); } catch (e) { /* 保底 */ }
