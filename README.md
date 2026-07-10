@@ -132,6 +132,26 @@ npm test        # 需本機安裝 Chrome；可用 CHROME_PATH 環境變數指定
 - 規範的檢測碼末碼區分 **C（可用軟體檢測）** 與 **E（人工稽核評量）**，
   本工具的「自動化違規／需人工複核」分流即對應此制度；官方檢測工具 Freego 的報告欄位（軟體／人工）亦同。
 
+## 待辦與路線圖
+
+**時限性待辦**
+
+- [ ] **2026-11-30（115 年修正版生效日）**：發布 v1.1.0 版本切換
+  - 移除 [content/scanner.js](content/scanner.js) 中 `duplicate-id` 的重新啟用（新版規範已刪除 4.1.1）
+  - 退役 rules-map 中的 `duplicate-id` 條目
+  - 清除 4.1.1 與 2.5.8 條目的過渡期附註（`noteZh`）
+  - README 標準版本對照表改以 115 年修正版為現行版
+- [ ] 商店審查通過後：README 加上 Chrome Web Store 安裝連結
+
+**規劃中功能**
+
+- [ ] **報讀預覽**：在受影響元素下方顯示模擬朗讀結果（如「（無可朗讀名稱）、按鈕」）。
+  技術基礎：axe 內建的 accessible name 計算引擎（`axe.commons.text.accessibleText`）＋
+  role/狀態的 NVDA 繁中慣用詞對照。讓不會操作報讀軟體的開發者「看見」朗讀內容。
+- [ ] 整頁朗讀順序預覽（報讀預覽的第二階段：線性化整頁無障礙樹，檢查 DOM 順序與視覺順序的落差）
+- [ ] 全站爬掃：如有需求，以獨立 CLI 工具實作（Node＋Puppeteer＋共用 rules-map.json），
+  不做進擴充套件（權限模型與架構考量見 commit 歷史）
+
 ## 授權與致謝
 
 - 檢測引擎：[axe-core](https://github.com/dequelabs/axe-core) **v4.10.3**（MPL-2.0），以本地檔案形式打包於 `vendor/axe.min.js`。升級 axe 版本時請一併校對 `data/rules-map.json` 的規則異動。
