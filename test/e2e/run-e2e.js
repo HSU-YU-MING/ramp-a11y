@@ -225,8 +225,12 @@ async function openPopup(browser, sw) {
     const isReport = (f) => f.startsWith('ramp-a11y-report-') && f.endsWith('.html');
     const before = new Set(fs.readdirSync(OUT).filter(isReport));
     await popup.click('#btn-export');
-    await sleep(1500);
-    const reportFile = fs.readdirSync(OUT).filter(isReport).find((f) => !before.has(f));
+    // 輪詢等下載完成（固定 sleep 對下載時序不穩，改為最多 ~8 秒的輪詢）
+    let reportFile;
+    for (let i = 0; i < 20 && !reportFile; i++) {
+      await sleep(400);
+      reportFile = fs.readdirSync(OUT).filter(isReport).find((f) => !before.has(f));
+    }
     let reportOk = false;
     if (reportFile) {
       const html = fs.readFileSync(path.join(OUT, reportFile), 'utf8');
@@ -393,6 +397,7 @@ async function openPopup(browser, sw) {
     await runStep('F XSS 逸出', async () => {
     // ===== T19：XSS — 頁面惡意字串不得注入 popup（逸出防呆迴歸）=====
     await page.goto(`http://127.0.0.1:${PORT}/xss-fixture.html`, { waitUntil: 'load' });
+    await page.bringToFront(); // 開 popup 前確保視窗為前景（chrome.action.openPopup 需要）
     await closeStalePopups(browser);
     const popupX = await openPopup(browser, sw);
     await popupX.click('#btn-scan');
