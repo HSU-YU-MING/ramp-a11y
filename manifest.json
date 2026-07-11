@@ -3,7 +3,7 @@
   "name": "Ramp 無障礙檢測",
   "short_name": "Ramp",
   "description": "一鍵檢測網頁無障礙問題，繁中解說並對應台灣「網站無障礙規範」準則與檢測碼。基於 axe-core，支援 WCAG 2.1/2.2。",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimum_chrome_version": "102",
   "action": {
     "default_popup": "popup/popup.html",
