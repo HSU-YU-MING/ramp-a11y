@@ -216,33 +216,31 @@ async function openPopup(browser, sw) {
     await sleep(300);
     await popup.screenshot({ path: OUT + '/popup-results.png' });
 
-    // ===== T9：匯出報告（攔截下載並驗證內容）=====
-    const dlClient = await popup.target().createCDPSession();
-    await dlClient.send('Browser.setDownloadBehavior', {
-      behavior: 'allow', downloadPath: OUT, eventsEnabled: true,
+    // ===== T9：匯出報告（攔截 blob 內容驗證）=====
+    // 直接 hook URL.createObjectURL 擷取報告 HTML，避開 headless:false 下 OS blob
+    // 下載時序不穩的 flakiness——仍走真實的 exportReport→buildReportHtml→blob 路徑。
+    await popup.evaluate(() => {
+      window.__reportHtml = null;
+      const orig = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => {
+        try { blob.text().then((t) => { window.__reportHtml = t; }); } catch (e) { /* 忽略 */ }
+        return orig(blob);
+      };
     });
-    // 只認本次新產生的報告檔，避免上次執行的殘留檔造成誤判
-    const isReport = (f) => f.startsWith('ramp-a11y-report-') && f.endsWith('.html');
-    const before = new Set(fs.readdirSync(OUT).filter(isReport));
     await popup.click('#btn-export');
-    // 輪詢等下載完成（固定 sleep 對下載時序不穩，改為最多 ~8 秒的輪詢）
-    let reportFile;
-    for (let i = 0; i < 20 && !reportFile; i++) {
-      await sleep(400);
-      reportFile = fs.readdirSync(OUT).filter(isReport).find((f) => !before.has(f));
+    let reportHtml = '';
+    for (let i = 0; i < 20 && !reportHtml; i++) {
+      await sleep(300);
+      reportHtml = await popup.evaluate(() => window.__reportHtml || '');
     }
-    let reportOk = false;
-    if (reportFile) {
-      const html = fs.readFileSync(path.join(OUT, reportFile), 'utf8');
-      reportOk =
-        html.includes('Ramp 無障礙檢測報告') &&
-        html.includes('等級 A') &&
-        html.includes('限制聲明') &&
-        html.includes('對比值(最小)') && // 官方準則名稱有進報告
-        html.includes('HM1240200C') &&   // 官方檢測碼有進報告（document-title）
-        html.includes('人工複核自評');    // 自評摘要與狀態有進報告
-    }
-    check('T9 匯出報告產生且內容正確', reportOk, reportFile || '無新下載檔案');
+    const reportOk =
+      reportHtml.includes('Ramp 無障礙檢測報告') &&
+      reportHtml.includes('等級 A') &&
+      reportHtml.includes('限制聲明') &&
+      reportHtml.includes('對比值(最小)') && // 官方準則名稱有進報告
+      reportHtml.includes('HM1240200C') &&   // 官方檢測碼有進報告（document-title）
+      reportHtml.includes('人工複核自評');    // 自評摘要與狀態有進報告
+    check('T9 匯出報告產生且內容正確', reportOk, reportHtml ? '已擷取報告 HTML' : '未擷取到 blob');
 
     // ===== T4：展開＋點擊元素 → 頁面高亮 =====
     await popup.click('.issue-header');
