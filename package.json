@@ -6,9 +6,11 @@
   "scripts": {
     "test": "node test/e2e/run-e2e.js",
     "test:unit": "node test/unit/run-unit.js",
+    "test:nvda": "node test/nvda/compare.js",
     "pack": "node scripts/pack.js"
   },
   "devDependencies": {
+    "@guidepup/guidepup": "^0.28.1",
     "adm-zip": "^0.5.18",
     "jsdom": "^25.0.1",
     "puppeteer-core": "^24.0.0"
