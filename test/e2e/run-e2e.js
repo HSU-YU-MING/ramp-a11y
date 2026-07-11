@@ -355,6 +355,30 @@ async function openPopup(browser, sw) {
     check('T18a polite 儲存提示', saved && saved.politeness === 'polite', saved && saved.politeness);
     check('T18b assertive 警示（role=alert）', alertMsg && alertMsg.politeness === 'assertive', alertMsg && alertMsg.politeness);
 
+    // ===== T19：XSS — 頁面惡意字串不得注入 popup（逸出防呆迴歸）=====
+    await page.goto(`http://127.0.0.1:${PORT}/xss-fixture.html`, { waitUntil: 'load' });
+    const popupX = await openPopup(browser, sw);
+    await popupX.click('#btn-scan');
+    await popupX.waitForSelector('#view-results:not([hidden])', { timeout: 60000 });
+    await sleep(300);
+    // 展開所有問題，讓 node.html 進入 DOM（scan 渲染路徑）
+    await popupX.$$eval('.issue-header', (els) => els.forEach((h) => { h.setAttribute('aria-expanded', 'true'); if (h.nextElementSibling) h.nextElementSibling.hidden = false; }));
+    await sleep(150);
+    // 切到朗讀順序，讓 name/value/text 進入 DOM（reading 渲染路徑）
+    await popupX.click('.mode-tab[data-mode="reading"]');
+    await popupX.waitForSelector('.ro-item', { timeout: 15000 });
+    await sleep(300);
+    const xss = await popupX.evaluate(() => ({
+      injected: document.querySelectorAll('[data-xss]').length,       // 任何被注入的惡意元素
+      popupFlag: !!window.__xss,                                      // popup 端是否被觸發
+      escapedShown: /<svg|<b |<img|<script/.test(document.body.innerText), // 惡意字串以文字逸出顯示
+    }));
+    const pageFlag = await page.evaluate(() => !!window.__xss);
+    check('T19 XSS：popup 無注入元素', xss.injected === 0, 'injected=' + xss.injected);
+    check('T19a XSS：未觸發腳本（popup／page）', !xss.popupFlag && !pageFlag);
+    check('T19b XSS：惡意字串以文字逸出顯示', xss.escapedShown);
+    await popupX.close();
+
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();

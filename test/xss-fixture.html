@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>XSS 逸出測試頁</title>
+</head>
+<body>
+  <h1>XSS 逸出測試</h1>
+
+  <!-- 名稱來自 aria-label 的惡意字串（屬性值為字面字串，不會被瀏覽器解析成 HTML）
+       → 進入朗讀順序物件停點的 name，popup 渲染時必須逸出 -->
+  <button type="button" aria-label="<svg data-xss onload=window.__xss=1>惡意按鈕">z</button>
+
+  <!-- 值：input value 的惡意字串 → nvdaValue -->
+  <input aria-label="惡意欄位" value="<b data-xss>值</b>" />
+
+  <!-- 違規節點（link-name）：node.html 會含到帶惡意 title 的子元素 → issueHtml 渲染 -->
+  <a href="/x"><span title="<img src=x data-xss onerror=window.__xss=1>"></span></a>
+
+  <!-- 文字節點含角括號（實體解碼後為字面文字）→ 朗讀順序文字停點 -->
+  <p>&lt;script data-xss&gt;alert(1)&lt;/script&gt; 一段含標記的內文</p>
+</body>
+</html>
