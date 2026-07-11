@@ -1,12 +1,23 @@
 /**
  * content/scanner.js
  * 以 chrome.scripting.executeScript 注入到當前分頁（isolated world）。
- * 依賴：vendor/axe.min.js 需先注入，讓此環境有全域 axe 可用。
+ * 依賴：vendor/axe.min.js 需先注入，讓此環境有全域 axe 可用（scan／朗讀順序的角色
+ *      與名稱計算依賴 axe.commons，且 axe.run 後需 axe.setup() 重建虛擬樹才可用）。
  *
- * 對外（popup）暴露三個函式，掛在 window 上供後續 executeScript 呼叫：
- *   window.__rampA11yScan()               → 執行 axe 掃描，回傳可序列化的純資料
- *   window.__rampA11yHighlight(selector)  → 高亮指定元素並捲動過去
- *   window.__rampA11yClear()              → 清除所有高亮
+ * 對外（popup）掛在 window 上的 API（供後續 executeScript 呼叫）：
+ *   __rampA11yScan()              → axe 掃描 + 每個違規元素的 NVDA 報讀預覽（純資料）
+ *   __rampA11yReadingOrder()      → 整頁線性化成 NVDA 朗讀順序 + 視覺落差 + 地標/表格/清單邊界
+ *   __rampA11yHighlight(sel)      → 依 selector 高亮並捲動
+ *   __rampA11yHighlightRO(i)      → 依朗讀順序索引高亮
+ *   __rampA11yClear()             → 清除高亮
+ *   __rampA11yLiveStart/Stop/Get/Clear() → 即時區域（aria-live）動態播報監看
+ *   __rampA11yInternals           → 內部純函式的測試掛勾（test/unit 用）
+ *
+ * 檔案分節（依序）：
+ *   高亮／樣式 → NVDA 報讀預覽（角色/值/狀態/位置/表格 對照與計算）
+ *   → 朗讀順序（線性化、地標/表格/清單邊界、視覺落差 roComputeFlags）
+ *   → 動態播報監看 → axe 掃描主流程 → 測試掛勾
+ * 純函式（值/位置/狀態/表格/地標/落差偵測）皆有 test/unit 覆蓋，可秒級迭代。
  */
 (() => {
   // 避免重複注入時重複定義
