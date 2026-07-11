@@ -595,11 +595,19 @@ function setModeUI(mode) {
 /** 注入掃描器並取得朗讀順序（線性化的無障礙樹＋視覺順序落差） */
 async function execReadingOrder() {
   if (currentTabId == null) return null;
-  // 朗讀順序的物件名稱依賴 axe（accessible name／role），確保三件套已注入
-  await chrome.scripting.executeScript({
+  // 朗讀順序的物件名稱依賴 axe（accessible name／role）。先探測是否已注入，
+  // 避免每次進此模式都重跑 axe.min.js（~550KB）造成不必要的解析成本。
+  const probe = await chrome.scripting.executeScript({
     target: { tabId: currentTabId },
-    files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+    func: () => !!(window.axe && window.__rampA11yReadingOrder),
   });
+  const ready = probe && probe[0] && probe[0].result;
+  if (!ready) {
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+    });
+  }
   const injection = await chrome.scripting.executeScript({
     target: { tabId: currentTabId },
     func: () => window.__rampA11yReadingOrder(),

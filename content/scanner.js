@@ -457,6 +457,31 @@
     return null;
   }
 
+  // 純函式：依幾何範圍偵測「同一視覺列上朗讀順序反序」的落差，標記 flagged 並回傳筆數。
+  // 抽出為獨立純函式以便單元測試（輸入為帶 rect 的停點陣列，不依賴 DOM／版面）。
+  const RO_ROW_TOL = 14; // 視覺「同列」的 top 容差（px）
+  function roComputeFlags(stops) {
+    const R = stops.filter((s) => s.rect && s.rect.w > 0 && s.rect.h > 0);
+    R.forEach((s, k) => { s._read = k; });
+    const sorted = R.slice().sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    const rows = []; let cur = null;
+    for (const s of sorted) {
+      if (!cur || s.rect.top - cur.top0 > RO_ROW_TOL) { cur = { top0: s.rect.top, items: [s] }; rows.push(cur); }
+      else cur.items.push(s);
+    }
+    let flaggedCount = 0;
+    for (const r of rows) {
+      r.items.sort((a, b) => a.rect.left - b.rect.left);
+      for (let j = 0; j < r.items.length - 1; j++) {
+        if (r.items[j]._read > r.items[j + 1]._read) {
+          if (!r.items[j].flagged) { r.items[j].flagged = true; flaggedCount++; }
+          if (!r.items[j + 1].flagged) { r.items[j + 1].flagged = true; flaggedCount++; }
+        }
+      }
+    }
+    return flaggedCount;
+  }
+
   window.__rampA11yReadingOrder = function () {
     // 清掉上次留下的定位屬性，避免索引錯亂
     document.querySelectorAll('[data-ramp-ro]').forEach((e) => e.removeAttribute('data-ramp-ro'));
@@ -539,27 +564,8 @@
     try { walk(document.body, document.body); flush(); }
     finally { if (didSetup) { try { window.axe.teardown(); } catch (e) { /* 忽略 */ } } }
 
-    // 視覺順序比對：把有幾何範圍的停點依 top 分列（容差 TOL），同一列內依 left 排序即
-    // 「畫面由左到右」。若同列中左邊的停點朗讀順序反而在後 → 視覺與朗讀順序落差。
-    const R = stops.filter((s) => s.rect && s.rect.w > 0 && s.rect.h > 0);
-    R.forEach((s, k) => { s._read = k; });
-    const sorted = R.slice().sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
-    const TOL = 14;
-    const rows = []; let cur = null;
-    for (const s of sorted) {
-      if (!cur || s.rect.top - cur.top0 > TOL) { cur = { top0: s.rect.top, items: [s] }; rows.push(cur); }
-      else cur.items.push(s);
-    }
-    let flaggedCount = 0;
-    for (const r of rows) {
-      r.items.sort((a, b) => a.rect.left - b.rect.left);
-      for (let j = 0; j < r.items.length - 1; j++) {
-        if (r.items[j]._read > r.items[j + 1]._read) {
-          if (!r.items[j].flagged) { r.items[j].flagged = true; flaggedCount++; }
-          if (!r.items[j + 1].flagged) { r.items[j + 1].flagged = true; flaggedCount++; }
-        }
-      }
-    }
+    // 視覺順序比對：標記同一視覺列上朗讀順序反序的落差（抽為純函式 roComputeFlags）
+    const flaggedCount = roComputeFlags(stops);
 
     return {
       url: location.href,
@@ -601,7 +607,17 @@
   const LIVE_SEL = '[aria-live], [role="alert"], [role="status"], [role="log"], [role="timer"], [role="marquee"], output';
 
   // 監看狀態掛在 window 上，跨多次注入與 popup 開關持續累積（頁面重整才清空）
-  window.__rampA11yLive = window.__rampA11yLive || { log: [], observer: null, on: false };
+  window.__rampA11yLive = window.__rampA11yLive || { log: [], observer: null, on: false, timer: null };
+
+  // popup 失焦關閉後無法主動停止觀察者；以「keepalive」綁定生命週期：
+  // popup 每次輪詢（__rampA11yLiveGet）會重設計時器，停止輪詢逾時即自動斷開，
+  // 避免觀察者在使用者離開後仍無限監看整頁 DOM。
+  const LIVE_KEEPALIVE_MS = 180000; // 3 分鐘無輪詢即自停
+  function liveKeepalive() {
+    const s = window.__rampA11yLive;
+    if (s.timer) clearTimeout(s.timer);
+    s.timer = setTimeout(() => { if (window.__rampA11yLiveStop) window.__rampA11yLiveStop(); }, LIVE_KEEPALIVE_MS);
+  }
 
   /** 解析即時區域的播報優先度：assertive（立即）／polite（依序）／null（不播報） */
   function livePoliteness(region) {
@@ -655,6 +671,7 @@
       obs.observe(document.body, { subtree: true, childList: true, characterData: true });
       state.observer = obs;
       state.on = true;
+      liveKeepalive();
     } catch (e) {
       state.on = false;
     }
@@ -665,12 +682,14 @@
   window.__rampA11yLiveStop = function () {
     const s = window.__rampA11yLive;
     if (s.observer) { try { s.observer.disconnect(); } catch (e) { /* 忽略 */ } s.observer = null; }
+    if (s.timer) { clearTimeout(s.timer); s.timer = null; }
     s.on = false;
     return true;
   };
 
-  /** 取得緩衝區（可序列化陣列的副本） */
+  /** 取得緩衝區（可序列化陣列的副本）；每次取用視為 popup 仍在監看，延續 keepalive */
   window.__rampA11yLiveGet = function () {
+    if (window.__rampA11yLive.on) liveKeepalive();
     return { on: window.__rampA11yLive.on, log: (window.__rampA11yLive.log || []).slice() };
   };
 
@@ -757,5 +776,11 @@
       }
     }
     return serialized;
+  };
+
+  // 內部純函式的測試掛勾（供 test/unit 存取；不影響正式行為，也不被 popup 使用）
+  window.__rampA11yInternals = {
+    nvdaValue, nvdaPosition, nvdaItemCount, nvdaDescription, nvdaStates,
+    nvdaTableCell, nvdaTableDims, livePoliteness, roLandmark, roBoundary, roComputeFlags,
   };
 })();

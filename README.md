@@ -98,11 +98,15 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 
 ```sh
 npm install
-npm test        # 需本機安裝 Chrome；可用 CHROME_PATH 環境變數指定位置
+npm run test:unit  # 純函式單元測試（jsdom，數秒，不需 Chrome）
+npm test           # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置
 ```
 
-測試會啟動一個獨立的 Chrome 視窗（使用暫存 profile，不影響日常瀏覽器），
-細節與已知限制（activeTab 無法程式化授權）見 [test/e2e/run-e2e.js](test/e2e/run-e2e.js) 檔頭註解。
+- **單元測試** [test/unit/run-unit.js](test/unit/run-unit.js)：以 jsdom 載入 scanner 的內部純函式
+  （NVDA 值／位置／狀態／表格、地標判定、視覺落差偵測），對合成 DOM 快速驗證，並檢查
+  manifest 與 package 版本一致。這些邏輯不依賴版面，可秒級迭代，補足 e2e 的覆蓋。
+- **端對端** [test/e2e/run-e2e.js](test/e2e/run-e2e.js)：啟動獨立 Chrome 視窗（暫存 profile，
+  不影響日常瀏覽器）跑完整流程；細節與已知限制（activeTab 無法程式化授權）見檔頭註解。
 
 ## 限制聲明（重要）
 
