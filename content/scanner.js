@@ -267,31 +267,66 @@
    * 表格儲存格：座標「第 N 列 第 N 欄」與關聯的欄/列標題（NVDA 進入儲存格會念）。
    * 僅支援原生 <table>（cellIndex/rowIndex）；ARIA 網格暫不計算。
    */
+  // 表格格點模型：正確處理 colspan/rowspan——把每個儲存格攤到它實際佔用的
+  // 列×欄格點，才能算對「第 N 列 第 N 欄」與欄/列標題。以 WeakMap 快取整張表的
+  // 格點（同一張表的多個儲存格共用，避免每格重算）。
+  const tableGridCache = new WeakMap();
+  function tableGrid(table) {
+    let g = tableGridCache.get(table);
+    if (g) return g;
+    const rows = table.rows; // 全表 <tr>，文件順序
+    const occ = [];          // occ[r][c] = 佔用該格點的儲存格
+    const coords = new Map(); // 儲存格 → { row, col }（1-based，左上格）
+    let colCount = 0;
+    for (let r = 0; r < rows.length; r++) {
+      if (!occ[r]) occ[r] = [];
+      let c = 0;
+      const cells = rows[r].cells;
+      for (let i = 0; i < cells.length; i++) {
+        const cellEl = cells[i];
+        while (occ[r][c]) c++; // 跳過被上方 rowspan 佔用的欄
+        const colspan = Math.max(1, cellEl.colSpan || 1);
+        const rowspan = Math.max(1, cellEl.rowSpan || 1);
+        coords.set(cellEl, { row: r + 1, col: c + 1 });
+        for (let dr = 0; dr < rowspan; dr++) {
+          for (let dc = 0; dc < colspan; dc++) {
+            const rr = r + dr, cc = c + dc;
+            if (!occ[rr]) occ[rr] = [];
+            occ[rr][cc] = cellEl;
+          }
+        }
+        c += colspan;
+        if (c > colCount) colCount = c;
+      }
+    }
+    g = { coords, occ, colCount, rowCount: rows.length };
+    tableGridCache.set(table, g);
+    return g;
+  }
+
+  /** 儲存格座標「第 N 列 第 N 欄」與關聯欄/列標題（正確處理 colspan/rowspan） */
   function nvdaTableCell(el) {
     if (el.tagName !== 'TD' && el.tagName !== 'TH') return null;
-    const row = el.parentElement;
-    if (!row || row.cells == null || el.cellIndex == null || row.rowIndex == null) return null;
-    const coord = '第 ' + (row.rowIndex + 1) + ' 列 第 ' + (el.cellIndex + 1) + ' 欄';
     const table = el.closest('table');
+    if (!table) return null;
+    const grid = tableGrid(table);
+    const pos = grid.coords.get(el);
+    if (!pos) return null;
+    const coord = '第 ' + pos.row + ' 列 第 ' + pos.col + ' 欄';
+    // 欄標題＝該欄第一列的格（若為 th）；列標題＝該列第一欄的格（若為 th）
     let colHeader = null, rowHeader = null;
-    if (table) {
-      const headRow = (table.tHead && table.tHead.rows[0]) || table.rows[0];
-      if (headRow && headRow !== row) {
-        const hc = headRow.cells[el.cellIndex];
-        if (hc && hc.tagName === 'TH') colHeader = (hc.textContent || '').trim() || null;
-      }
-      const first = row.cells[0];
-      if (first && first.tagName === 'TH' && first !== el) rowHeader = (first.textContent || '').trim() || null;
-    }
+    const topCell = grid.occ[0] && grid.occ[0][pos.col - 1];
+    if (topCell && topCell.tagName === 'TH' && topCell !== el) colHeader = (topCell.textContent || '').trim() || null;
+    const leftCell = grid.occ[pos.row - 1] && grid.occ[pos.row - 1][0];
+    if (leftCell && leftCell.tagName === 'TH' && leftCell !== el) rowHeader = (leftCell.textContent || '').trim() || null;
     return { coord, colHeader, rowHeader };
   }
 
-  /** 表格維度「表格有 N 欄 M 列」（NVDA 進入表格會念；僅原生 <table>） */
+  /** 表格維度「表格有 N 欄 M 列」（欄數取格點最大值，正確反映 colspan）」 */
   function nvdaTableDims(el) {
     if (el.tagName !== 'TABLE') return null;
-    const rows = el.rows ? el.rows.length : 0;
-    const cols = el.rows && el.rows[0] ? el.rows[0].cells.length : 0;
-    return rows && cols ? '表格有 ' + cols + ' 欄 ' + rows + ' 列' : null;
+    const grid = tableGrid(el);
+    return grid.rowCount && grid.colCount ? '表格有 ' + grid.colCount + ' 欄 ' + grid.rowCount + ' 列' : null;
   }
 
   /**

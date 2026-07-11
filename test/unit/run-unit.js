@@ -88,6 +88,16 @@ eq('nvdaTableCell 欄標題', cell && cell.colHeader, '金額');
 eq('nvdaTableCell 列標題', cell && cell.rowHeader, '一月');
 eq('nvdaTableDims', I.nvdaTableDims(tbl), '表格有 2 欄 2 列'); // 1 表頭列 + 1 資料列
 
+// colspan / rowspan：格點模型應算對座標與維度
+const span = mount(
+  '<table>'
+  + '<tr><th>A</th><th colspan="2">BC</th></tr>'        // row1: A(1,1), BC 跨 (1,2)(1,3)
+  + '<tr><td rowspan="2">X</td><td>Y</td><td>Z</td></tr>' // row2: X 跨 (2,1)(3,1), Y(2,2), Z(2,3)
+  + '<tr><td id="q">Q</td><td>R</td></tr>'                // row3: X 佔 (3,1) → Q(3,2), R(3,3)
+  + '</table>');
+eq('nvdaTableCell colspan/rowspan 座標', I.nvdaTableCell(doc.getElementById('q')).coord, '第 3 列 第 2 欄');
+eq('nvdaTableDims 含 colspan 欄數', I.nvdaTableDims(span), '表格有 3 欄 3 列');
+
 // ===== roLandmark =====
 eq('roLandmark nav', I.roLandmark(el('<nav></nav>')), '導覽區');
 eq('roLandmark section 無名 → null', I.roLandmark(el('<section></section>')), null);
