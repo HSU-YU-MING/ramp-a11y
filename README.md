@@ -4,6 +4,12 @@
 
 掃描你目前瀏覽的網頁（JavaScript 執行後的實際 DOM），以開源檢測引擎 [axe-core](https://github.com/dequelabs/axe-core) 找出 WCAG 無障礙問題，並以**繁體中文**說明問題成因與修正方式，對應到**台灣「網站無障礙規範」**的準則編號與 A / AA / AAA 檢測等級。
 
+## 安裝
+
+👉 **[從 Chrome 線上應用程式商店安裝](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm)**（Chrome／Edge 皆適用）
+
+安裝後工具列會出現 Ramp 圖示。開啟任一一般網頁 → 點擊圖示 →「開始檢測」即可（也可用快捷鍵 `Ctrl+Shift+U`）。開發者若要從原始碼載入，見下方[〈從原始碼安裝〉](#從原始碼安裝開發者)。
+
 ## 功能
 
 - 一鍵掃描當前分頁，依 **A / AA / AAA 等級分組**呈現違規項目，同組內依 axe 嚴重度（critical → minor）排序
@@ -38,7 +44,9 @@
 
 所有檢測都在你的瀏覽器本機完成，不傳送任何資料到外部伺服器。
 
-## 安裝（載入未封裝項目 / Load unpacked）
+## 從原始碼安裝（開發者）
+
+（一般使用者請用上方的[商店安裝](#安裝)；以下是開發者載入未封裝項目 / Load unpacked 的方式。）
 
 1. 下載或 clone 本專案到本機資料夾。
 2. 開啟 Chrome，網址列輸入 `chrome://extensions/`（Edge 為 `edge://extensions/`）。
@@ -148,7 +156,7 @@ npm test           # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指
   - 退役 rules-map 中的 `duplicate-id` 條目
   - 清除 4.1.1 與 2.5.8 條目的過渡期附註（`noteZh`）
   - README 標準版本對照表改以 115 年修正版為現行版
-- [ ] 商店審查通過後：README 加上 Chrome Web Store 安裝連結
+- [x] 商店審查通過並上架：README 已加上 [Chrome Web Store 安裝連結](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm)
 
 **規劃中功能**
 
