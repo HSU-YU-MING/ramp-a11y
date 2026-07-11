@@ -293,6 +293,11 @@ async function openPopup(browser, sw) {
     check('T14c 視覺順序落差偵測',
       ro.flaggedCount === 2 && flagged.length === 2 && flagged.every((s) => (s.text || '').includes('DOM 第')),
       'flaggedCount=' + ro.flaggedCount);
+    // 清單邊界（NVDA 進入清單念「清單 有 N 項」）與清單項目位置「N 之 M」
+    check('T14d 清單邊界', ro.stops.some((s) => s.kind === 'list' && s.boundary === 'enter' && s.text === '清單 有 2 項'),
+      JSON.stringify(ro.stops.filter((s) => s.kind === 'list').map((s) => s.text)));
+    const li1 = ro.stops.find((s) => (s.text || '') === '清單項目一');
+    check('T14e 清單項目位置', li1 && li1.position === '2 之 1', li1 && li1.position);
 
     // ===== T15：NVDA 報讀預覽的值／位置／項目數／描述／進階狀態 =====
     await page.goto(`http://127.0.0.1:${PORT}/nvda-fixture.html`, { waitUntil: 'load' });

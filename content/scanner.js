@@ -474,6 +474,14 @@
     if (el.tagName === 'TABLE') {
       return { kind: 'table', enter: nvdaTableDims(el) || '表格', exit: '離開表格' };
     }
+    // 清單（NVDA 進入清單會念「清單 有 N 項」、離開念「離開清單」）
+    const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
+    if (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU' || roleAttr === 'list' || roleAttr === 'listbox') {
+      const n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
+        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+        : el.querySelectorAll(roleAttr === 'listbox' ? '[role="option"]' : '[role="listitem"]').length;
+      if (n > 0) return { kind: 'list', enter: '清單 有 ' + n + ' 項', exit: '離開清單' };
+    }
     return null;
   }
 
@@ -551,6 +559,10 @@
           const h = [cell.colHeader, cell.rowHeader].filter(Boolean).join('・');
           if (h) stop.description = h;
         }
+      } else if (el.tagName === 'LI') {
+        // 清單項目：補集合位置「N 之 M」（NVDA 會念）
+        const pos = nvdaPosition(el, 'listitem');
+        if (pos) stop.position = pos;
       }
       stops.push(stop);
     }
@@ -574,6 +586,15 @@
         name = nv.name; role = nv.role || nv.roleEn; states = nv.states; nameRequired = nv.nameRequired;
         value = nv.value; position = nv.position; itemCount = nv.itemCount; description = nv.description;
       } else { role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase(); } // getRole 無角色時的保底
+      // 若物件是清單項目的唯一內容（li 無自身文字，如 <li><a>選單</a></li>），
+      // 把清單位置掛到物件上——NVDA 會在念出該連結時一併報位置。
+      if (!position && c.closest) {
+        const li = c.closest('li');
+        if (li && li.parentElement && /^(UL|OL|MENU)$/.test(li.parentElement.tagName)) {
+          const hasOwnText = Array.prototype.some.call(li.childNodes, (n) => n.nodeType === 3 && n.nodeValue.trim());
+          if (!hasOwnText) { const lp = nvdaPosition(li, 'listitem'); if (lp) position = lp; }
+        }
+      }
       try { c.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
       stops.push({ roIndex, kind: 'object', role, text: null, name, nameRequired, states,
         value, position, itemCount, description, flagged: false, rect: roRect(c) });

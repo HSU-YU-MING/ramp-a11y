@@ -104,6 +104,11 @@ eq('roLandmark section 無名 → null', I.roLandmark(el('<section></section>'))
 eq('roLandmark section 具名 → 區域', I.roLandmark(el('<section aria-label="側欄"></section>')), '區域');
 eq('roLandmark role=main', I.roLandmark(el('<div role="main"></div>')), '主要內容區');
 
+// roBoundary：清單邊界
+const ub = I.roBoundary(el('<ul><li>a</li><li>b</li></ul>'));
+eq('roBoundary 清單 enter', ub && ub.kind === 'list' && ub.enter, '清單 有 2 項');
+eq('roBoundary 清單 exit', ub && ub.exit, '離開清單');
+
 // ===== roComputeFlags（視覺落差：同列反序）=====
 const swapped = [
   { rect: { top: 0, left: 100, w: 50, h: 20 }, flagged: false },  // read 0，視覺在右

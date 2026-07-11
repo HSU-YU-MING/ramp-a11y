@@ -617,10 +617,10 @@ async function execReadingOrder() {
 
 /** 產生單一朗讀停點的 HTML */
 function readingItemHtml(s) {
-  // 地標／表格的進入‧離開邊界：非互動的區域標記
-  if (s.kind === 'landmark' || s.kind === 'table') {
+  // 地標／表格／清單的進入‧離開邊界：非互動的區域標記
+  if (s.kind === 'landmark' || s.kind === 'table' || s.kind === 'list') {
     const dir = s.boundary === 'exit' ? 'exit' : 'enter';
-    const tag = s.kind === 'table' ? '表格' : '地標';
+    const tag = s.kind === 'table' ? '表格' : s.kind === 'list' ? '清單' : '地標';
     return `
       <div class="ro-boundary ${dir}">
         <span class="ro-seq">${s.roIndex + 1}</span>
