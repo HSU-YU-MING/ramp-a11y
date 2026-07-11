@@ -62,6 +62,29 @@ function check(name, ok, detail = '') {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 把一組測試包起來：整組丟例外時記錄失敗並「繼續下一組」，
+ * 不讓一個例外中止後面所有測試（各組自帶頁面/popup、彼此獨立）。
+ */
+async function runStep(name, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    console.log(`✗ STEP ERROR [${name}]: ${e && e.message ? e.message : e}`);
+    results.push({ name: `${name}（整組例外中止）`, ok: false });
+  }
+}
+
+/** 關掉任何殘留的 popup 分頁（前一組若中途例外，popup 可能沒關）*/
+async function closeStalePopups(browser) {
+  for (const t of browser.targets()) {
+    if (t.url().includes('/popup/popup.html')) {
+      const pg = await t.page().catch(() => null);
+      if (pg) await pg.close().catch(() => {});
+    }
+  }
+}
+
 async function openPopup(browser, sw) {
   await sw.evaluate(() => chrome.action.openPopup());
   const target = await browser.waitForTarget((t) => t.url().includes('/popup/popup.html'), { timeout: 10000 });
@@ -109,6 +132,8 @@ async function openPopup(browser, sw) {
     await page.goto(`http://127.0.0.1:${PORT}/fixture.html`, { waitUntil: 'load' });
     await page.bringToFront();
 
+    await runStep('A 掃描結果／篩選／匯出／高亮', async () => {
+    await closeStalePopups(browser);
     // ===== T1：初始狀態只顯示一個 view（[hidden] 修正驗證）=====
     const popup = await openPopup(browser, sw);
     const vis = await popup.evaluate(() =>
@@ -228,9 +253,12 @@ async function openPopup(browser, sw) {
     await sleep(500);
     const hl2 = await page.evaluate(() => document.querySelectorAll('.ramp-a11y-highlight').length);
     check('T5 再次點擊清除高亮', hl2 === 0, 'highlight=' + hl2);
-
-    // ===== T6：關閉 popup 重開 → 快取還原 =====
     await popup.close();
+    });
+
+    await runStep('B 快取還原與自評持久化', async () => {
+    await closeStalePopups(browser);
+    // ===== T6：關閉 popup 重開 → 快取還原（沿用 A 組的掃描與 session 快取）=====
     await sleep(300);
     await page.bringToFront();
     const popup2 = await openPopup(browser, sw);
@@ -274,7 +302,9 @@ async function openPopup(browser, sw) {
     const rv = await popup3.$eval('.review-select', (el) => el.value);
     check('T12 人工複核自評持久化', rv === 'pass', 'value=' + rv);
     await popup3.close();
+    });
 
+    await runStep('C 朗讀順序線性化', async () => {
     // ===== T14：朗讀順序線性化＋視覺順序落差偵測 =====
     await page.goto(`http://127.0.0.1:${PORT}/reading-order-fixture.html`, { waitUntil: 'load' });
     await page.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
@@ -298,7 +328,9 @@ async function openPopup(browser, sw) {
       JSON.stringify(ro.stops.filter((s) => s.kind === 'list').map((s) => s.text)));
     const li1 = ro.stops.find((s) => (s.text || '') === '清單項目一');
     check('T14e 清單項目位置', li1 && li1.position === '2 之 1', li1 && li1.position);
+    });
 
+    await runStep('D NVDA 值／表格／地標', async () => {
     // ===== T15：NVDA 報讀預覽的值／位置／項目數／描述／進階狀態 =====
     await page.goto(`http://127.0.0.1:${PORT}/nvda-fixture.html`, { waitUntil: 'load' });
     await page.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
@@ -339,7 +371,9 @@ async function openPopup(browser, sw) {
     check('T17 導覽地標（含 aria-label）', navEnter && navEnter.text === '主要選單 導覽區', navEnter && navEnter.text);
     check('T17a 主要內容地標', stops.some((s) => s.kind === 'landmark' && s.boundary === 'enter' && s.text === '主要內容區'));
     check('T17b 地標離開邊界', stops.some((s) => s.kind === 'landmark' && s.boundary === 'exit' && s.text === '離開導覽區'));
+    });
 
+    await runStep('E 動態播報', async () => {
     // ===== T18：動態播報監看（即時區域 aria-live / role=alert）=====
     await page.goto(`http://127.0.0.1:${PORT}/live-fixture.html`, { waitUntil: 'load' });
     await page.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
@@ -354,9 +388,12 @@ async function openPopup(browser, sw) {
     check('T18 動態播報監看啟動', liveOn === true && live.on === true);
     check('T18a polite 儲存提示', saved && saved.politeness === 'polite', saved && saved.politeness);
     check('T18b assertive 警示（role=alert）', alertMsg && alertMsg.politeness === 'assertive', alertMsg && alertMsg.politeness);
+    });
 
+    await runStep('F XSS 逸出', async () => {
     // ===== T19：XSS — 頁面惡意字串不得注入 popup（逸出防呆迴歸）=====
     await page.goto(`http://127.0.0.1:${PORT}/xss-fixture.html`, { waitUntil: 'load' });
+    await closeStalePopups(browser);
     const popupX = await openPopup(browser, sw);
     await popupX.click('#btn-scan');
     await popupX.waitForSelector('#view-results:not([hidden])', { timeout: 60000 });
@@ -378,10 +415,13 @@ async function openPopup(browser, sw) {
     check('T19a XSS：未觸發腳本（popup／page）', !xss.popupFlag && !pageFlag);
     check('T19b XSS：惡意字串以文字逸出顯示', xss.escapedShown);
     await popupX.close();
+    });
 
+    await runStep('G 受保護頁面', async () => {
     // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
     await page.goto('chrome://version/');
     await page.bringToFront();
+    await closeStalePopups(browser);
     const popup4 = await openPopup(browser, sw);
     const errState = await popup4.evaluate(() => ({
       errShown: getComputedStyle(document.getElementById('view-error')).display !== 'none',
@@ -394,6 +434,7 @@ async function openPopup(browser, sw) {
       errState.title
     );
     await popup4.screenshot({ path: OUT + '/popup-restricted.png' });
+    });
   } finally {
     await browser.close();
     server.close();
