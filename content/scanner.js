@@ -82,8 +82,8 @@
     link: '連結',
     checkbox: '核取方塊',
     radio: '選擇鈕',
-    textbox: '編輯',
-    searchbox: '編輯',
+    textbox: '編輯區',
+    searchbox: '編輯區',
     combobox: '下拉式方塊',
     listbox: '清單',
     list: '清單',
@@ -374,6 +374,11 @@
     } else if (announcedRoleEn) {
       roleZh = NVDA_ROLE_ZH[announcedRoleEn] || null;
       nameRequired = !!NVDA_NAME_REQUIRED[announcedRoleEn];
+      // 帶 aria-haspopup 的按鈕，真實 NVDA 念「功能表按鈕」（經真 NVDA 對照驗證）
+      if (announcedRoleEn === 'button') {
+        const hp = el.getAttribute('aria-haspopup');
+        if (hp === 'true' || hp === 'menu') roleZh = '功能表按鈕';
+      }
     }
 
     // 沒有可朗讀角色時（generic／null），NVDA 只讀內文、不當成獨立物件，

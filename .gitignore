@@ -13,3 +13,4 @@ dist/
 # 作業系統雜項
 Thumbs.db
 .DS_Store
+test/nvda/last-run.json

@@ -1,32 +1,33 @@
 /**
- * 真 NVDA 對照工具（手動執行，非自動化 CI）
+ * 真 NVDA 對照工具（全自動，需互動桌面；不進 CI）
  *
- * 目的：讓「真正的 NVDA」走過測試頁，擷取它實際念出的每一句，與我們的
- *       __rampA11yReadingOrder 模擬並排比對，驗證用詞／組合是否貼近真實 NVDA。
+ * 讓「真正的 NVDA」逐一 Tab 走過測試頁的控制項，擷取它實際念出的每一句，
+ * 與我們的 __rampA11yReadingOrder 模擬並排比對，驗證用詞／組合的忠實度。
  *
- * 需求：
- *   - Windows + 本機 Chrome
- *   - 先安裝 Guidepup 的 NVDA：npx @guidepup/setup（會裝一份掛了 NVDA Remote
- *     附加元件的專用 NVDA，供 Guidepup 驅動與擷取語音）
+ * 需求：Windows + 本機 Chrome + 先執行 npx @guidepup/setup（安裝 Guidepup 專用 NVDA）
+ * 用法：npm run test:nvda [-- fixture 檔名，預設 nvda-fixture.html]
  *
- * 用法：node test/nvda/compare.js [fixture 檔名，預設 nvda-fixture.html]
+ * 全自動焦點處理（實測踩雷後的成果，勿隨意簡化）：
+ *  1. NVDA 啟動時 Windows 常會彈出「設定 > 協助工具」搶焦點 → 啟動後殺 SystemSettings.exe
+ *  2. Guidepup NVDA 預設開啟「語音檢視器」且置頂蓋在畫面左上（x=0,y=0,500x500），
+ *     會攔截點擊 → 先把 guidepup nvda.ini 的 showSpeechViewerAtStartup 關掉
+ *  3. 以合成滑鼠點擊（OS 層）點進 Chrome 視窗內，真正轉移鍵盤焦點
+ *  4. Tab 一定要用 nvda.press()（OS 層、經 NVDA 鍵盤攔截）；CDP 合成鍵盤
+ *     只會移動 DOM 焦點，NVDA 聽不到
  *
- * ⚠ 焦點注意：執行時會開一個瀏覽器視窗。NVDA 跟隨「鍵盤焦點」朗讀，而 Windows
- *   的前景鎖定不允許背景腳本可靠地把焦點搶到瀏覽器。因此本工具會**請你在倒數內
- *   親手點一下開啟的瀏覽器視窗**，NVDA 才會讀到該頁（若焦點仍在別的視窗——例如
- *   開著的「設定」視窗——請先關掉那些視窗）。這也是本工具維持手動、不進 CI 的原因。
+ * 執行期間 NVDA 會出聲朗讀、桌面視窗會被最小化——屬預期行為。
  */
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
 const os = require('os');
+const http = require('http');
 const cp = require('child_process');
 const { nvda } = require('@guidepup/guidepup');
 const puppeteer = require('puppeteer-core');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const FIXTURE = process.argv[2] || 'nvda-fixture.html';
-const PORT = 18973;
+const PORT = 18985;
 const URL = `http://127.0.0.1:${PORT}/${FIXTURE}`;
 const CHROME = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -34,23 +35,102 @@ const CHROME = [
 ].find((p) => fs.existsSync(p));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** 把停點壓成一行文字，方便與 NVDA 語音並排 */
+/** 寫入並執行內嵌的 PowerShell 輔助腳本 */
+const PS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ramp-nvda-ps-'));
+function ps(name, args = '') {
+  try {
+    return cp.execSync(
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${path.join(PS_DIR, name)}" ${args}`,
+      { encoding: 'utf8' }
+    ).trim();
+  } catch (e) { return 'ERR ' + (e.message || '').slice(0, 80); }
+}
+fs.writeFileSync(path.join(PS_DIR, 'focus-click.ps1'), `
+param([int]$ProcId)
+Add-Type @"
+using System;using System.Runtime.InteropServices;
+public struct RECT{public int L,T,R,B;}
+public class WC{
+ [DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int n);
+ [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,uint d,IntPtr e);
+}
+"@
+Get-Process nvda -ErrorAction SilentlyContinue | ForEach-Object {
+  if ($_.MainWindowHandle -ne 0) { [WC]::ShowWindow($_.MainWindowHandle,6) | Out-Null }
+}
+Start-Sleep -Milliseconds 400
+$p=Get-Process -Id $ProcId -ErrorAction SilentlyContinue
+if(-not $p -or $p.MainWindowHandle -eq 0){ Write-Output "NOWINDOW"; exit }
+$h=$p.MainWindowHandle
+[WC]::ShowWindow($h,9)|Out-Null
+Start-Sleep -Milliseconds 400
+[WC]::SetForegroundWindow($h)|Out-Null
+Start-Sleep -Milliseconds 300
+Start-Sleep -Milliseconds 300
+$r=New-Object RECT
+[WC]::GetWindowRect($h,[ref]$r)|Out-Null
+$x=$r.L+180; $y=$r.T+150
+[WC]::SetCursorPos($x,$y)|Out-Null
+Start-Sleep -Milliseconds 150
+[WC]::mouse_event(0x2,0,0,0,[IntPtr]::Zero);[WC]::mouse_event(0x4,0,0,0,[IntPtr]::Zero)
+Write-Output ("foregrounded+clicked " + $x + "," + $y)
+`);
+fs.writeFileSync(path.join(PS_DIR, 'click-at.ps1'), `
+param([int]$ProcId,[int]$OffX,[int]$OffY)
+Add-Type @"
+using System;using System.Runtime.InteropServices;
+public struct RECT{public int L,T,R,B;}
+public class CK{
+ [DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,uint d,IntPtr e);
+}
+"@
+$p=Get-Process -Id $ProcId -ErrorAction SilentlyContinue
+if(-not $p -or $p.MainWindowHandle -eq 0){ Write-Output "NOWINDOW"; exit }
+$r=New-Object RECT
+[CK]::GetWindowRect($p.MainWindowHandle,[ref]$r)|Out-Null
+$x=$r.L+$OffX; $y=$r.T+$OffY
+[CK]::SetCursorPos($x,$y)|Out-Null
+Start-Sleep -Milliseconds 120
+[CK]::mouse_event(0x2,0,0,0,[IntPtr]::Zero);[CK]::mouse_event(0x4,0,0,0,[IntPtr]::Zero)
+Write-Output ("clicked " + $x + "," + $y)
+`);
+
+/** 關掉 guidepup NVDA 的語音檢視器（置頂視窗會攔截點擊） */
+function disableSpeechViewer() {
+  try {
+    const out = cp.execSync('reg query "HKCU\\SOFTWARE\\Guidepup\\Nvda"', { encoding: 'utf8' });
+    const m = out.match(/guidepup_nvda_\S+\s+REG_SZ\s+(.+)/);
+    if (!m) return '登錄檔無 guidepup NVDA';
+    const ini = path.join(m[1].trim(), 'userConfig', 'nvda.ini');
+    if (!fs.existsSync(ini)) return 'nvda.ini 不存在';
+    const txt = fs.readFileSync(ini, 'utf8');
+    if (/showSpeechViewerAtStartup = True/.test(txt)) {
+      fs.writeFileSync(ini, txt.replace('showSpeechViewerAtStartup = True', 'showSpeechViewerAtStartup = False'));
+      return '已關閉語音檢視器';
+    }
+    return '語音檢視器已是關閉';
+  } catch (e) { return 'ERR ' + e.message; }
+}
+
+/** 停點壓成一行（僅可聚焦物件，與 Tab 走訪對齊） */
 function stopToLine(s) {
-  if (s.kind === 'landmark' || s.kind === 'table') return '〔' + s.text + '〕';
-  if (s.kind === 'object') {
-    const bits = [s.name || (s.nameRequired ? '（無可朗讀名稱）' : ''), s.role];
-    if (s.value) bits.push(s.value);
-    if (s.states && s.states.length) bits.push(s.states.join(' '));
-    if (s.position) bits.push(s.position);
-    if (s.itemCount) bits.push(s.itemCount);
-    if (s.description) bits.push('（' + s.description + '）');
-    return bits.filter(Boolean).join(' ');
-  }
-  return (s.text || '') + (s.position ? ' ' + s.position : '') + (s.description ? '（' + s.description + '）' : '');
+  const x = [s.name || (s.nameRequired ? '（無可朗讀名稱）' : ''), s.role];
+  if (s.value) x.push(s.value);
+  if (s.states && s.states.length) x.push(s.states.join(' '));
+  if (s.position) x.push(s.position);
+  if (s.itemCount) x.push(s.itemCount);
+  if (s.description) x.push('（' + s.description + '）');
+  return x.filter(Boolean).join(' ');
 }
 
 (async () => {
   if (!CHROME) throw new Error('找不到 Chrome');
+  console.log('語音檢視器：', disableSpeechViewer());
   const server = http.createServer((req, res) => {
     const p = path.join(REPO, 'test', req.url === '/' ? FIXTURE : req.url.replace(/^\//, ''));
     fs.readFile(p, (e, d) => {
@@ -61,54 +141,74 @@ function stopToLine(s) {
   }).listen(PORT);
 
   // (A) 我們的模擬（headless）
-  const b = await puppeteer.launch({ executablePath: CHROME, headless: 'new', pipe: true });
-  const pg = await b.newPage();
-  await pg.goto(URL, { waitUntil: 'load' });
-  await pg.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
-  await pg.addScriptTag({ path: path.join(REPO, 'vendor/axe-locale-zh_TW.js') });
-  await pg.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
-  const ro = await pg.evaluate(() => window.__rampA11yReadingOrder());
-  await b.close();
-  const ourLines = ro.stops.map(stopToLine);
+  const bh = await puppeteer.launch({ executablePath: CHROME, headless: 'new', pipe: true });
+  const ph = await bh.newPage();
+  await ph.goto(URL, { waitUntil: 'load' });
+  await ph.addScriptTag({ path: path.join(REPO, 'vendor/axe.min.js') });
+  await ph.addScriptTag({ path: path.join(REPO, 'vendor/axe-locale-zh_TW.js') });
+  await ph.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
+  const ro = await ph.evaluate(() => window.__rampA11yReadingOrder());
+  await bh.close();
+  const ourLines = ro.stops.filter((s) => s.kind === 'object').map(stopToLine);
 
   // (B) 真 NVDA
-  try { cp.execSync('taskkill /IM nvda.exe /F', { stdio: 'ignore' }); } catch (e) { /* 沒在跑就算了 */ }
-  await sleep(1200);
-  const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'nvda-cmp-'));
-  const chrome = cp.spawn(CHROME, ['--user-data-dir=' + prof, '--no-first-run', '--new-window', URL], { detached: false });
-  await sleep(3500);
+  try { cp.execSync('taskkill /IM nvda.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
+  await sleep(800);
+  const b = await puppeteer.launch({
+    executablePath: CHROME, headless: false, pipe: true, defaultViewport: null,
+    // 拿掉 --enable-automation：避免產生「受自動化軟體控制」資訊列——
+    // 有螢幕報讀軟體時 Chrome 會把焦點移到該資訊列播報，搶走頁面焦點
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: ['--no-first-run', '--window-position=100,100', '--window-size=1000,800'],
+  });
+  const pg = (await b.pages())[0];
+  await pg.goto(URL, { waitUntil: 'load' });
+  console.log('NVDA 啟動中（Windows 可能彈出「設定」——會自動處理）…');
   await nvda.start();
-  await sleep(1500);
-  for (let n = 6; n >= 1; n--) { process.stdout.write(`\r👉 請點一下剛開啟的瀏覽器視窗，讓 NVDA 讀它…（${n}）  `); await sleep(1000); }
-  process.stdout.write('\n');
+  await sleep(2500);
+  try { cp.execSync('taskkill /IM SystemSettings.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
+  await sleep(600);
+  console.log('奪回焦點：', ps('focus-click.ps1', String(b.process().pid)));
+  await sleep(800);
   await nvda.clearSpokenPhraseLog();
-  await nvda.press('Control+Home'); await sleep(800);
-  const phrases = []; let same = 0, prev = null;
-  for (let i = 0; i < 45; i++) {
-    await nvda.next();
+  const phr = [];
+  for (let i = 0; i < 14; i++) {
+    await nvda.press('Tab');
+    await sleep(750);
+    // 自癒：若 Tab 沒讓 DOM 焦點落在頁面控制項上（焦點被瀏覽器 UI 搶走），重新點回頁面
+    const ae = await pg.evaluate(() => {
+      const e = document.activeElement;
+      return e && e !== document.body ? e.tagName + (e.id ? '#' + e.id : '') : null;
+    }).catch(() => null);
+    if (!ae && i < 3) {
+      console.log('   （焦點不在頁面控制項，重新點回頁面）');
+      ps('click-at.ps1', `${b.process().pid} 180 180`);
+      await sleep(500);
+      continue;
+    }
     const p = (await nvda.lastSpokenPhrase() || '').trim();
-    if (p === prev) { if (++same >= 3) break; } else same = 0;
-    prev = p; if (p) phrases.push(p);
+    if (p && p !== phr[phr.length - 1]) phr.push(p);
   }
   await nvda.stop();
-  try { cp.execSync('taskkill /PID ' + chrome.pid + ' /T /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
+  await b.close();
   server.close();
-  try { fs.rmSync(prof, { recursive: true, force: true }); } catch (e) { /* 忽略 */ }
+  try { fs.rmSync(PS_DIR, { recursive: true, force: true }); } catch (e) { /* 忽略 */ }
 
-  const rows = Math.max(phrases.length, ourLines.length);
   console.log('\n頁面：' + FIXTURE);
-  console.log('─'.repeat(78));
-  console.log('  #  | 真 NVDA 念出的'.padEnd(44) + '| 我們的模擬');
-  console.log('─'.repeat(78));
-  for (let i = 0; i < rows; i++) {
-    const l = (String(i + 1).padStart(3) + '  | ' + (phrases[i] || '')).padEnd(44);
-    console.log(l + '| ' + (ourLines[i] || ''));
+  console.log('═'.repeat(80));
+  console.log('真 NVDA 逐一 Tab 念出（' + phr.length + ' 句）：');
+  phr.forEach((p, i) => console.log('  ' + String(i + 1).padStart(2) + '  ' + p));
+  console.log('─'.repeat(80));
+  console.log('我們的模擬（可聚焦物件）：');
+  ourLines.forEach((l, i) => console.log('  ' + String(i + 1).padStart(2) + '  ' + l));
+  console.log('═'.repeat(80));
+  // 用頁面專屬詞判斷（瀏覽器 UI 也有「按鈕／編輯區」，不能拿來判斷）
+  const ok = phr.some((p) => /台中|滑桿|功能表按鈕|導覽區|多行/.test(p));
+  if (!ok) {
+    console.log('⚠ 本輪 NVDA 讀到的是瀏覽器 UI 而非頁面控制項（Windows 焦點時序不穩定），');
+    console.log('  直接重跑一次通常即可；成功時會逐一念出「城市, 下拉式方塊, 台中」等頁面控制項。');
   }
-  console.log('─'.repeat(78));
-  const focusOk = phrases.some((p) => /報讀|測試頁|滑桿|表格|導覽/.test(p));
-  if (!focusOk) {
-    console.log('⚠ NVDA 似乎沒讀到本頁（可能焦點在別的視窗）。請關掉其他視窗、重跑，');
-    console.log('  並在倒數內親手點一下開啟的瀏覽器視窗。');
-  }
+  fs.writeFileSync(path.join(__dirname, 'last-run.json'), JSON.stringify({ phrases: phr, ourLines }, null, 2));
+  console.log('（原始輸出已存 test/nvda/last-run.json）');
   process.exit(0);
 })().catch((e) => { console.error('ERR:', e.message); process.exit(1); });
