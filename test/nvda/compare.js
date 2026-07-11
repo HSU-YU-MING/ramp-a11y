@@ -1,8 +1,9 @@
 /**
  * 真 NVDA 對照工具（全自動，需互動桌面；不進 CI）
  *
- * 讓「真正的 NVDA」逐一 Tab 走過測試頁的控制項，擷取它實際念出的每一句，
- * 與我們的 __rampA11yReadingOrder 模擬並排比對，驗證用詞／組合的忠實度。
+ * 讓「真正的 NVDA」以瀏覽模式逐行走過測試頁（含文字、控制項、表格、地標），
+ * 擷取它實際念出的每一句，與我們的 __rampA11yReadingOrder 模擬並排比對，
+ * 驗證用詞／組合／線性化順序的忠實度。
  *
  * 需求：Windows + 本機 Chrome + 先執行 npx @guidepup/setup（安裝 Guidepup 專用 NVDA）
  * 用法：npm run test:nvda [-- fixture 檔名，預設 nvda-fixture.html]
@@ -117,8 +118,12 @@ function disableSpeechViewer() {
   } catch (e) { return 'ERR ' + e.message; }
 }
 
-/** 停點壓成一行（僅可聚焦物件，與 Tab 走訪對齊） */
+/** 停點壓成一行 */
 function stopToLine(s) {
+  if (s.kind === 'text') {
+    return [(s.text || ''), s.role !== '文字' ? '【' + s.role + '】' : '', s.position, s.description ? '（' + s.description + '）' : '']
+      .filter(Boolean).join(' ');
+  }
   const x = [s.name || (s.nameRequired ? '（無可朗讀名稱）' : ''), s.role];
   if (s.value) x.push(s.value);
   if (s.states && s.states.length) x.push(s.states.join(' '));
@@ -149,7 +154,8 @@ function stopToLine(s) {
   await ph.addScriptTag({ path: path.join(REPO, 'content/scanner.js') });
   const ro = await ph.evaluate(() => window.__rampA11yReadingOrder());
   await bh.close();
-  const ourLines = ro.stops.filter((s) => s.kind === 'object').map(stopToLine);
+  const ourLines = ro.stops.map((s) =>
+    (s.kind === 'landmark' || s.kind === 'table' || s.kind === 'list') ? '〔' + s.text + '〕' : stopToLine(s));
 
   // (B) 真 NVDA
   try { cp.execSync('taskkill /IM nvda.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
@@ -168,26 +174,36 @@ function stopToLine(s) {
   await sleep(2500);
   try { cp.execSync('taskkill /IM SystemSettings.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
   await sleep(600);
-  console.log('奪回焦點：', ps('focus-click.ps1', String(b.process().pid)));
-  await sleep(800);
-  await nvda.clearSpokenPhraseLog();
+  // 焦點自癒：點進頁面 → 用「探測句」確認 NVDA 讀的是本頁（而非瀏覽器 UI／別的視窗），
+  // 不像就重點擊再試（最多 4 次）。這是實測中最可靠的判準。
+  const looksWrong = (p) => /工具列|網址與搜尋列|分頁搜尋|加入書籤|視窗$|設定/.test(p || '');
+  let ready = false;
+  for (let attempt = 1; attempt <= 4 && !ready; attempt++) {
+    console.log(`焦點嘗試 ${attempt}：`, ps('focus-click.ps1', String(b.process().pid)));
+    await sleep(700);
+    await nvda.clearSpokenPhraseLog();
+    await nvda.press('Control+Home');
+    await sleep(800);
+    await nvda.next();
+    await sleep(700);
+    const first = (await nvda.lastSpokenPhrase() || '').trim();
+    console.log('  探測句：', first.slice(0, 50) || '（無）');
+    if (first && !looksWrong(first)) ready = true;
+  }
+  // 瀏覽模式逐行走訪（真 NVDA 的線性化——與我們的朗讀順序直接對照）
   const phr = [];
-  for (let i = 0; i < 14; i++) {
-    await nvda.press('Tab');
-    await sleep(750);
-    // 自癒：若 Tab 沒讓 DOM 焦點落在頁面控制項上（焦點被瀏覽器 UI 搶走），重新點回頁面
-    const ae = await pg.evaluate(() => {
-      const e = document.activeElement;
-      return e && e !== document.body ? e.tagName + (e.id ? '#' + e.id : '') : null;
-    }).catch(() => null);
-    if (!ae && i < 3) {
-      console.log('   （焦點不在頁面控制項，重新點回頁面）');
-      ps('click-at.ps1', `${b.process().pid} 180 180`);
-      await sleep(500);
-      continue;
+  if (ready) {
+    const first = (await nvda.lastSpokenPhrase() || '').trim();
+    if (first) phr.push(first);
+    let same = 0, prev = null;
+    for (let i = 0; i < 40; i++) {
+      await nvda.next();
+      await sleep(600);
+      const p = (await nvda.lastSpokenPhrase() || '').trim();
+      if (p === prev) { if (++same >= 3) break; } else same = 0;
+      prev = p;
+      if (p && p !== phr[phr.length - 1]) phr.push(p);
     }
-    const p = (await nvda.lastSpokenPhrase() || '').trim();
-    if (p && p !== phr[phr.length - 1]) phr.push(p);
   }
   await nvda.stop();
   await b.close();

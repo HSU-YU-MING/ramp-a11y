@@ -194,14 +194,11 @@
   function nvdaValue(el, roleEn) {
     const attr = (n) => el.getAttribute(n);
     if (roleEn === 'progressbar' || roleEn === 'meter' || el.tagName === 'PROGRESS' || el.tagName === 'METER') {
+      // 經真 NVDA 對照驗證：靜態讀出的是原始值（如「75」），不換算成「百分之 N」
+      //（「百分之 %d」是進度「更新時」的播報用語，非靜態快照）
       const vt = attr('aria-valuetext'); if (vt) return vt.trim();
-      let now = attr('aria-valuenow'), min = attr('aria-valuemin'), max = attr('aria-valuemax');
-      if (now == null && el.value != null && el.value !== '') now = String(el.value);
-      if (min == null && (el.tagName === 'PROGRESS' || el.tagName === 'METER')) min = String(el.min != null ? el.min : 0);
-      if (max == null && (el.tagName === 'PROGRESS' || el.tagName === 'METER')) max = String(el.max != null ? el.max : 1);
-      const n = parseFloat(now), lo = parseFloat(min), hi = parseFloat(max);
-      if (!isNaN(n) && !isNaN(lo) && !isNaN(hi) && hi > lo) return '百分之 ' + Math.round(((n - lo) / (hi - lo)) * 100);
-      return !isNaN(n) ? String(n) : null;
+      const now = attr('aria-valuenow'); if (now != null) return now.trim();
+      return el.value != null && el.value !== '' ? String(el.value) : null;
     }
     if (roleEn === 'slider' || roleEn === 'spinbutton') {
       const vt = attr('aria-valuetext'); if (vt) return vt.trim();
@@ -246,16 +243,13 @@
     return null;
   }
 
-  /** 清單／清單方塊的項目數「有 N 項」（NVDA 進入清單時會報項目數） */
+  /** 清單的項目數「有 N 項」——僅真清單（ul/ol/role=list）；
+   *  經真 NVDA 對照驗證：清單方塊（listbox／select multiple）不念項目數 */
   function nvdaItemCount(el, roleEn) {
-    let n = 0;
-    if (roleEn === 'list') {
-      n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
-        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-        : el.querySelectorAll('[role="listitem"]').length;
-    } else if (roleEn === 'listbox') {
-      n = el.tagName === 'SELECT' ? el.querySelectorAll('option').length : el.querySelectorAll('[role="option"]').length;
-    }
+    if (roleEn !== 'list') return null;
+    const n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
+      ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+      : el.querySelectorAll('[role="listitem"]').length;
     return n > 0 ? '有 ' + n + ' 項' : null;
   }
 
@@ -333,11 +327,11 @@
     return { coord, colHeader, rowHeader };
   }
 
-  /** 表格維度「表格有 N 欄 M 列」（欄數取格點最大值，正確反映 colspan）」 */
+  /** 表格維度「表格有 N 列 M 欄」（列先欄後——經真 NVDA 對照驗證的實際語序） */
   function nvdaTableDims(el) {
     if (el.tagName !== 'TABLE') return null;
     const grid = tableGrid(el);
-    return grid.rowCount && grid.colCount ? '表格有 ' + grid.colCount + ' 欄 ' + grid.rowCount + ' 列' : null;
+    return grid.rowCount && grid.colCount ? '表格有 ' + grid.rowCount + ' 列 ' + grid.colCount + ' 欄' : null;
   }
 
   /**
@@ -484,18 +478,19 @@
   function roBoundary(el) {
     const lm = roLandmark(el);
     if (lm) {
+      // 「地標」後綴為真 NVDA 實際播報格式（如「主要選單, 導覽區 地標」）
       const label = (el.getAttribute('aria-label') || '').trim();
-      return { kind: 'landmark', enter: label ? label + ' ' + lm : lm, exit: '離開' + lm };
+      return { kind: 'landmark', enter: (label ? label + ' ' : '') + lm + ' 地標', exit: '離開' + lm };
     }
     if (el.tagName === 'TABLE') {
       return { kind: 'table', enter: nvdaTableDims(el) || '表格', exit: '離開表格' };
     }
-    // 清單（NVDA 進入清單會念「清單 有 N 項」、離開念「離開清單」）
+    // 真清單（ul/ol/role=list）念「清單 有 N 項」；listbox 不念項目數（經真 NVDA 驗證）
     const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
-    if (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU' || roleAttr === 'list' || roleAttr === 'listbox') {
+    if (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU' || roleAttr === 'list') {
       const n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
         ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-        : el.querySelectorAll(roleAttr === 'listbox' ? '[role="option"]' : '[role="listitem"]').length;
+        : el.querySelectorAll('[role="listitem"]').length;
       if (n > 0) return { kind: 'list', enter: '清單 有 ' + n + ' 項', exit: '離開清單' };
     }
     return null;

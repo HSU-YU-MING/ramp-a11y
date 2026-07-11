@@ -350,10 +350,15 @@ async function openPopup(browser, sw) {
     const more = find((s) => s.name === '更多');
     const note = find((s) => (s.states || []).includes('多行'));
     check('T15 滑桿值', slider.value === '30', 'value=' + slider.value);
-    check('T15a 進度列百分比', prog.value === '百分之 75', 'value=' + prog.value);
+    check('T15a 進度列值（真 NVDA 念原始值）', prog.value === '75', 'value=' + prog.value);
     check('T15b 下拉選中項', city.value === '台中', 'value=' + city.value);
     check('T15c 編輯區描述', acc.description === '請輸入 6 到 12 個英數字', 'desc=' + acc.description);
-    check('T15d 清單項目數', hobby.itemCount === '有 3 項', 'count=' + hobby.itemCount);
+    // 經真 NVDA 驗證：listbox 不念項目數；真清單（ul）以邊界「清單 有 N 項」呈現
+    check('T15d listbox 不誤報項目數', hobby === undefined || hobby.itemCount == null,
+      'hobby.itemCount=' + (hobby && hobby.itemCount));
+    check('T15d2 真清單邊界含項目數',
+      nv.stops.some((s) => s.kind === 'list' && s.boundary === 'enter' && s.text === '清單 有 3 項'),
+      JSON.stringify(nv.stops.filter((s) => s.kind === 'list').map((s) => s.text)));
     check('T15e 集合位置', tab.position === '5 之 2', 'pos=' + tab.position);
     check('T15f 子功能表＋折疊狀態',
       (more.states || []).includes('子功能表') && (more.states || []).includes('折疊'), JSON.stringify(more.states));
@@ -362,7 +367,7 @@ async function openPopup(browser, sw) {
     // ===== T16：表格座標、欄/列標題、表格維度 =====
     const stops = nv.stops;
     const tblEnter = stops.find((s) => s.kind === 'table' && s.boundary === 'enter');
-    check('T16 表格維度', tblEnter && tblEnter.text === '表格有 2 欄 3 列', tblEnter && tblEnter.text);
+    check('T16 表格維度（列先欄後，真 NVDA 語序）', tblEnter && tblEnter.text === '表格有 3 列 2 欄', tblEnter && tblEnter.text);
     const cell = stops.find((s) => (s.text || '') === '1000');
     check('T16a 儲存格座標', cell && cell.position === '第 2 列 第 2 欄', cell && cell.position);
     check('T16b 儲存格欄/列標題', cell && cell.description === '金額・一月', cell && cell.description);
@@ -370,8 +375,8 @@ async function openPopup(browser, sw) {
 
     // ===== T17：地標進入‧離開邊界 =====
     const navEnter = stops.find((s) => s.kind === 'landmark' && s.boundary === 'enter' && /導覽區/.test(s.text || ''));
-    check('T17 導覽地標（含 aria-label）', navEnter && navEnter.text === '主要選單 導覽區', navEnter && navEnter.text);
-    check('T17a 主要內容地標', stops.some((s) => s.kind === 'landmark' && s.boundary === 'enter' && s.text === '主要內容區'));
+    check('T17 導覽地標（含 aria-label＋地標後綴）', navEnter && navEnter.text === '主要選單 導覽區 地標', navEnter && navEnter.text);
+    check('T17a 主要內容地標', stops.some((s) => s.kind === 'landmark' && s.boundary === 'enter' && s.text === '主要內容區 地標'));
     check('T17b 地標離開邊界', stops.some((s) => s.kind === 'landmark' && s.boundary === 'exit' && s.text === '離開導覽區'));
     });
 

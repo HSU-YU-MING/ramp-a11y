@@ -57,7 +57,7 @@ eq('livePoliteness role=status → polite', I.livePoliteness(el('<div role="stat
 eq('nvdaValue textbox 內容', I.nvdaValue(el('<input type="text" value="王小明">'), 'textbox'), '王小明');
 eq('nvdaValue password 不朗讀', I.nvdaValue(el('<input type="password" value="secret">'), 'textbox'), null);
 eq('nvdaValue select 選中項', I.nvdaValue(el('<select><option>甲</option><option selected>乙</option></select>'), 'combobox'), '乙');
-eq('nvdaValue progress → 百分比', I.nvdaValue(el('<progress max="100" value="75"></progress>'), 'progressbar'), '百分之 75');
+eq('nvdaValue progress → 原始值（真 NVDA 驗證）', I.nvdaValue(el('<progress max="100" value="75"></progress>'), 'progressbar'), '75');
 eq('nvdaValue slider', I.nvdaValue(el('<input type="range" min="0" max="100" value="30">'), 'slider'), '30');
 
 // ===== nvdaStates =====
@@ -75,6 +75,7 @@ eq('nvdaPosition 原生 li 計算', I.nvdaPosition(ul.querySelector('#t'), 'list
 
 // ===== nvdaItemCount =====
 eq('nvdaItemCount list', I.nvdaItemCount(el('<ul><li>a</li><li>b</li><li>c</li></ul>'), 'list'), '有 3 項');
+eq('nvdaItemCount listbox 不念（真 NVDA 驗證）', I.nvdaItemCount(el('<select multiple><option>a</option></select>'), 'listbox'), null);
 
 // ===== nvdaDescription =====
 const f = mount('<div><input id="f" aria-describedby="h"><span id="h">說明文字</span></div>').querySelector('#f');
@@ -86,7 +87,7 @@ const cell = I.nvdaTableCell(doc.getElementById('c'));
 eq('nvdaTableCell 座標', cell && cell.coord, '第 2 列 第 2 欄');
 eq('nvdaTableCell 欄標題', cell && cell.colHeader, '金額');
 eq('nvdaTableCell 列標題', cell && cell.rowHeader, '一月');
-eq('nvdaTableDims', I.nvdaTableDims(tbl), '表格有 2 欄 2 列'); // 1 表頭列 + 1 資料列
+eq('nvdaTableDims（列先欄後）', I.nvdaTableDims(tbl), '表格有 2 列 2 欄'); // 1 表頭列 + 1 資料列
 
 // colspan / rowspan：格點模型應算對座標與維度
 const span = mount(
@@ -96,7 +97,7 @@ const span = mount(
   + '<tr><td id="q">Q</td><td>R</td></tr>'                // row3: X 佔 (3,1) → Q(3,2), R(3,3)
   + '</table>');
 eq('nvdaTableCell colspan/rowspan 座標', I.nvdaTableCell(doc.getElementById('q')).coord, '第 3 列 第 2 欄');
-eq('nvdaTableDims 含 colspan 欄數', I.nvdaTableDims(span), '表格有 3 欄 3 列');
+eq('nvdaTableDims 含 colspan 欄數', I.nvdaTableDims(span), '表格有 3 列 3 欄');
 
 // ===== roLandmark =====
 eq('roLandmark nav', I.roLandmark(el('<nav></nav>')), '導覽區');
@@ -108,6 +109,10 @@ eq('roLandmark role=main', I.roLandmark(el('<div role="main"></div>')), '主要�
 const ub = I.roBoundary(el('<ul><li>a</li><li>b</li></ul>'));
 eq('roBoundary 清單 enter', ub && ub.kind === 'list' && ub.enter, '清單 有 2 項');
 eq('roBoundary 清單 exit', ub && ub.exit, '離開清單');
+// roBoundary：地標含「地標」後綴（真 NVDA 播報格式）、listbox 不當清單邊界
+const nb = I.roBoundary(el('<nav aria-label="主選單"></nav>'));
+eq('roBoundary 地標 enter（含後綴）', nb && nb.enter, '主選單 導覽區 地標');
+eq('roBoundary select 非邊界', I.roBoundary(el('<select multiple><option>a</option></select>')), null);
 
 // ===== roComputeFlags（視覺落差：同列反序）=====
 const swapped = [
