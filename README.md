@@ -4,7 +4,7 @@
 
 掃描你目前瀏覽的網頁（JavaScript 執行後的實際 DOM），以開源檢測引擎 [axe-core](https://github.com/dequelabs/axe-core) 找出 WCAG 無障礙問題，並以**繁體中文**說明問題成因與修正方式，對應到**台灣「網站無障礙規範」**的準則編號與 A / AA / AAA 檢測等級。
 
-**[作品介紹與開發故事](https://cornhsu.com/ramp-a11y.html) · [Chrome 線上應用程式商店](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm) · MIT**
+**[作品介紹與開發故事](https://cornhsu.com/ramp-a11y) · [Chrome 線上應用程式商店](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm) · MIT**
 
 ## 安裝
 
