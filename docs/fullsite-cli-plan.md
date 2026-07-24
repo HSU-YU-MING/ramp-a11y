@@ -95,13 +95,19 @@ npx ramp-scan <start-url> [options]
 | M1 | 單 URL CLI ＋ 參數 ＋ JSON 輸出 | ✅ 已完成 |
 | M2 | Frontier 爬蟲（BFS、去重、上限、同源、容錯）＋全站彙整 JSON ＋ `--url-list` PolyMigrate 橋接與逐語言報告 | ✅ 已完成 |
 | M3 | HTML 報告（復用擴充套件匯出版型渲染 site/page JSON） | ✅ 已完成 |
-| M4 | 抽共用模組（translateRule＋報告）、擴充套件改用、README、加測試 | ⬜ 待做 |
+| M4 | 抽共用模組（shared/report-core.js）、擴充套件與 CLI 皆改用、加測試、README | ✅ 已完成 |
 
 > M2 一併完成了原列於 M3 的「彙整」（siteSummary＋topRules＋worstPages＋byLanguage JSON）。
 > M3 加上 `--format json｜html｜both`：HTML 沿用擴充套件匯出報告的配色與 .issue/.badge/.stats
 > 樣式，全站版含執行摘要表、逐語言彙整表、最常見障礙（去重、每規則含修正建議與 NVDA 預覽
 > 詳列一次）、最糟頁面、逐頁 `<details>` 明細；單頁版沿用 M1 結構。並行度（--concurrency）
 > 仍為循序，留待日後。
+>
+> M4 把真正相同的核心抽成 [shared/report-core.js](../shared/report-core.js)（UMD，供瀏覽器
+> `<script>` 與 Node `require` 共用）：`resolveMapping`（規則→台灣準則對應）、`escapeHtml`、
+> `nvdaParts`。擴充套件 popup 與 CLI 皆改用之，消除各持一份的漂移風險；報告「版型」因兩者
+> 本質不同（互動單頁 vs 靜態全站）而各自保留。新增 CLI 純函式測試（test:cli，20 項）與共用
+> 模組測試（併入 test:unit），並把 shared/ 一併納入打包（pack.js）與 e2e 測試副本清單。
 
 ## 9. 風險與因應
 

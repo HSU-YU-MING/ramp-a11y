@@ -35,6 +35,8 @@ jobs:
         run: npm run test:unit
       - name: Popup 靜態無障礙契約測試
         run: npm run test:self
+      - name: CLI 純函式單元測試
+        run: npm run test:cli
 
   # 端對端：需真 Chrome。e2e 以 headless:false 開視窗，故在 xvfb 虛擬顯示下執行。
   e2e:

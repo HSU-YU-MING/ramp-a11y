@@ -84,15 +84,8 @@ function showView(name) {
   });
 }
 
-/** HTML 逸出，避免頁面內容（selector、HTML 片段）注入 popup */
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// 共用純函式（載於 popup.js 之前的 shared/report-core.js）：HTML 逸出、規則對應、NVDA 文字化
+const { escapeHtml, resolveMapping, nvdaParts } = window.RampShared;
 
 /** 顯示錯誤畫面 */
 function showError(title, detail, canRetry) {
@@ -269,46 +262,14 @@ async function runScan() {
  * 未在對應表中的規則沿用 axe 的說明文字（經 zh_TW 語言包多為繁中），
  * 並依 tags 分流為「未對應台灣準則」或「最佳實務建議」。
  */
+// 共用對應核心（resolveMapping）＋ popup 專屬的節點與 helpUrl
 function translateRule(rule) {
-  const map = rulesMap.get(rule.id);
-  const common = {
+  return {
+    ...resolveMapping(rule, rulesMap),
     helpUrl: rule.helpUrl,
     nodes: rule.nodes,
     // scanner 端最多回傳 20 個元素，nodeCount 為實際總數
     nodeCount: rule.nodeCount != null ? rule.nodeCount : rule.nodes.length,
-    axeId: rule.id,
-    impact: rule.impact || null,
-    // best-practice 為 axe 的最佳實務建議，並非 WCAG 失敗項，需與違規分流
-    isBestPractice: (rule.tags || []).includes('best-practice'),
-    // WCAG 2.2 新增準則：台灣規範（對齊 WCAG 2.1）尚未採用，需明確標示
-    isWcag22: (rule.tags || []).some((t) => /^wcag22a{1,3}$/.test(t)),
-  };
-  if (map) {
-    return {
-      ...common,
-      mapped: true,
-      level: map.twLevel,
-      title: map.titleZh,
-      guideline: map.twGuideline,
-      guidelineName: map.twGuidelineName || '',
-      category: map.category,
-      why: map.whyZh,
-      how: map.howZh,
-      note: map.noteZh || null, // 版本差異等補充說明（如 115 年修正版的增刪）
-      checkCodes: map.twCheckCodes || [], // 官方檢測碼（附件一 C 碼）
-    };
-  }
-  return {
-    ...common,
-    mapped: false,
-    level: null,
-    title: rule.help, // 經 zh_TW 語言包後多數已是繁中
-    guideline: null,
-    category: null,
-    why: rule.description,
-    how: null,
-    note: null,
-    checkCodes: [],
   };
 }
 
@@ -833,19 +794,9 @@ async function enterLiveMode() {
 
 // ===== 報告匯出 =====
 
-/** 報告中的 NVDA 報讀預覽（純文字、可列印） */
+/** 報告中的 NVDA 報讀預覽（純文字、可列印；片段來自共用 nvdaParts） */
 function reportNvdaHtml(nvda) {
-  if (!nvda) return '';
-  const parts = [];
-  if (nvda.name) parts.push(nvda.name);
-  else if (nvda.nameRequired) parts.push('（無可朗讀名稱）');
-  if (nvda.role) parts.push(nvda.role);
-  else if (nvda.roleEn) parts.push(nvda.roleEn);
-  if (nvda.value) parts.push(nvda.value);
-  if (nvda.states && nvda.states.length) parts.push(nvda.states.join('　'));
-  if (nvda.position) parts.push(nvda.position);
-  if (nvda.itemCount) parts.push(nvda.itemCount);
-  if (nvda.description) parts.push('（' + nvda.description + '）');
+  const parts = nvdaParts(nvda);
   if (!parts.length) return '';
   return `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(parts.join('　'))}</p>`;
 }

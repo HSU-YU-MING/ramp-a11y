@@ -23,6 +23,7 @@ const { parseArgs } = require('node:util');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
+const { escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
 
 const REPO = path.resolve(__dirname, '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -164,43 +165,13 @@ const rulesMap = new Map(
   (Array.isArray(rulesList) ? rulesList : Object.values(rulesList)).map((r) => [r.axeRuleId, r]),
 );
 
+// 共用對應核心（resolveMapping）＋ CLI 專屬的節點樣本資料
 function translateRule(rule) {
-  const map = rulesMap.get(rule.id);
-  const common = {
-    axeId: rule.id,
-    impact: rule.impact || null,
+  return {
+    ...resolveMapping(rule, rulesMap),
     nodeCount: rule.nodeCount != null ? rule.nodeCount : rule.nodes.length,
-    isBestPractice: (rule.tags || []).includes('best-practice'),
-    isWcag22: (rule.tags || []).some((t) => /^wcag22a{1,3}$/.test(t)),
     sampleTargets: rule.nodes.slice(0, 5).map((n) => n.target),
     sampleNvda: (rule.nodes.find((n) => n.nvda) || {}).nvda || null,
-  };
-  if (map) {
-    return {
-      ...common,
-      mapped: true,
-      level: map.twLevel,
-      title: map.titleZh,
-      guideline: map.twGuideline,
-      guidelineName: map.twGuidelineName || '',
-      category: map.category,
-      why: map.whyZh,
-      how: map.howZh,
-      note: map.noteZh || null,
-      checkCodes: map.twCheckCodes || [],
-    };
-  }
-  return {
-    ...common,
-    mapped: false,
-    level: null,
-    title: rule.help,
-    guideline: null,
-    category: null,
-    why: rule.description,
-    how: null,
-    note: null,
-    checkCodes: [],
   };
 }
 
@@ -440,14 +411,7 @@ function printSiteSummary(site) {
   }
 }
 
-// ===== HTML 報告（沿用擴充套件匯出報告的視覺風格）=====
-function escapeHtml(s) {
-  return String(s == null ? '' : s).replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-  );
-}
-
+// ===== HTML 報告（沿用擴充套件匯出報告的視覺風格；escapeHtml 來自共用模組）=====
 const REPORT_CSS = `
   body { font-family: "Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;
          max-width: 960px; margin: 0 auto; padding: 24px; color: #1F2937; line-height: 1.7; }
@@ -474,18 +438,10 @@ const REPORT_CSS = `
 `;
 
 function nvdaText(nvda) {
-  if (!nvda) return '';
-  const p = [];
-  if (nvda.name) p.push(nvda.name);
-  else if (nvda.nameRequired) p.push('（無可朗讀名稱）');
-  if (nvda.role) p.push(nvda.role);
-  else if (nvda.roleEn) p.push(nvda.roleEn);
-  if (nvda.value) p.push(nvda.value);
-  if (nvda.states && nvda.states.length) p.push(nvda.states.join('　'));
-  if (nvda.position) p.push(nvda.position);
-  if (nvda.itemCount) p.push(nvda.itemCount);
-  if (nvda.description) p.push('（' + nvda.description + '）');
-  return p.length ? `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(p.join('　'))}</p>` : '';
+  const parts = nvdaParts(nvda);
+  return parts.length
+    ? `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(parts.join('　'))}</p>`
+    : '';
 }
 
 function ruleDetailHtml(r) {
@@ -757,7 +713,22 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error('SCAN ERROR:', e.message);
-  process.exit(2);
-});
+// 直接執行才跑；被 require（測試）時只導出純函式，不執行 main
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('SCAN ERROR:', e.message);
+    process.exit(2);
+  });
+}
+
+module.exports = {
+  normalizeUrl,
+  isAsset,
+  hostOf,
+  makeFilter,
+  translateRule,
+  parseUrlList,
+  aggregate,
+  buildSiteHtml,
+  buildPageHtml,
+};

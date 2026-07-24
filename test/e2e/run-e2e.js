@@ -53,6 +53,7 @@ function buildTestExtension() {
     'data',
     'vendor',
     'icons',
+    'shared',
   ]) {
     fs.cpSync(path.join(REPO, item), path.join(dest, item), { recursive: true });
   }

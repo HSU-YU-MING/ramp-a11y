@@ -215,6 +215,50 @@ const ordered = [
 ];
 check('roComputeFlags 正常順序 → 不標記', I.roComputeFlags(ordered) === 0);
 
+// ===== 共用模組 shared/report-core.js（擴充套件與 CLI 共用，防漂移）=====
+const RampShared = require(path.join(REPO, 'shared/report-core.js'));
+const rmap = new Map(
+  JSON.parse(fs.readFileSync(path.join(REPO, 'data/rules-map.json'), 'utf8')).map((r) => [
+    r.axeRuleId,
+    r,
+  ]),
+);
+const mappedRule = RampShared.resolveMapping(
+  { id: 'image-alt', tags: ['wcag2a'], help: 'h', description: 'd' },
+  rmap,
+);
+eq('resolveMapping 對應規則 → 台灣準則', mappedRule.guideline, '1.1.1');
+eq('resolveMapping 對應規則 → 等級', mappedRule.level, 'A');
+check('resolveMapping 對應規則 mapped=true', mappedRule.mapped === true);
+const unmappedRule = RampShared.resolveMapping(
+  { id: 'no-such-rule', tags: [], help: 'H', description: 'D' },
+  rmap,
+);
+check(
+  'resolveMapping 未對應 → mapped=false、title 用 help',
+  unmappedRule.mapped === false && unmappedRule.title === 'H',
+);
+check(
+  'resolveMapping best-practice 標記',
+  RampShared.resolveMapping({ id: 'x', tags: ['best-practice'], help: '', description: '' }, rmap)
+    .isBestPractice === true,
+);
+check(
+  'resolveMapping wcag22 標記',
+  RampShared.resolveMapping(
+    { id: 'target-size', tags: ['wcag22aa'], help: '', description: '' },
+    rmap,
+  ).isWcag22 === true,
+);
+eq(
+  'nvdaParts 組合順序',
+  RampShared.nvdaParts({ name: '帳號', role: '編輯區', value: 'user', states: ['必要的'] }).join(
+    '/',
+  ),
+  '帳號/編輯區/user/必要的',
+);
+eq('nvdaParts null → 空陣列', RampShared.nvdaParts(null).length, 0);
+
 // ===== 版本一致性（manifest 與 package 不得漂移）=====
 const mf = JSON.parse(fs.readFileSync(path.join(REPO, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));

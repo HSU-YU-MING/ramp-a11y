@@ -12,7 +12,16 @@ const REPO = path.resolve(__dirname, '..');
 const DIST = path.join(REPO, 'dist');
 
 // 與 test/e2e/run-e2e.js 的 buildTestExtension 同一份清單（上架版不改 manifest）
-const INCLUDE = ['manifest.json', 'popup', 'content', 'background', 'data', 'vendor', 'icons'];
+const INCLUDE = [
+  'manifest.json',
+  'popup',
+  'content',
+  'background',
+  'data',
+  'vendor',
+  'icons',
+  'shared',
+];
 
 const manifest = JSON.parse(fs.readFileSync(path.join(REPO, 'manifest.json'), 'utf8'));
 fs.mkdirSync(DIST, { recursive: true });

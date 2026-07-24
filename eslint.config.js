@@ -45,7 +45,13 @@ module.exports = [
 
   // Node 端：純腳本與 jsdom 測試（不含瀏覽器全域，避免 scripts 誤用 document/window 未被抓到）
   {
-    files: ['scripts/**/*.js', 'test/unit/**/*.js', 'test/self-audit/**/*.js', 'eslint.config.js'],
+    files: [
+      'scripts/**/*.js',
+      'test/unit/**/*.js',
+      'test/self-audit/**/*.js',
+      'test/cli/**/*.js',
+      'eslint.config.js',
+    ],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
@@ -69,6 +75,20 @@ module.exports = [
     rules: {
       ...commonRules,
       // 中文 UI／報告文案在字串中會刻意使用全形空白（U+3000）作為分隔，非誤植
+      'no-irregular-whitespace': ['error', { skipTemplates: true, skipStrings: true }],
+    },
+  },
+
+  // 共用模組（UMD）：同時在瀏覽器與 Node 載入
+  {
+    files: ['shared/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      ...commonRules,
       'no-irregular-whitespace': ['error', { skipTemplates: true, skipStrings: true }],
     },
   },

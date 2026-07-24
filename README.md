@@ -156,8 +156,9 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
-npm run test:unit    # 純函式單元測試（jsdom，數秒，不需 Chrome）：38 項
+npm run test:unit    # 純函式單元測試（jsdom，含共用模組，不需 Chrome）：46 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
+npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整）：20 項
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：53 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
 ```
@@ -190,6 +191,34 @@ e2e 另在 CI 以 xvfb 虛擬顯示搭配 stable Chrome 跑完整流程。
 | 讀不到分頁網址、或部分測試判定「無法檢測」 | 正式 manifest 僅有 `activeTab`，程式化開啟 popup 不算使用者手勢、Chrome 不核發授權。e2e 會複製一份加了 `<all_urls>` 的暫存副本繞過（真實 activeTab 授權只能由真人點工具列圖示驗證）。 |
 
 CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變數），本機執行只需確保裝有 Chrome 137+。
+
+## 全站爬掃 CLI（ramp-scan）
+
+擴充套件掃單一分頁；若要**批次稽核整個網站**，repo 內附一支本機 CLI，對每頁跑**與擴充
+套件完全相同**的掃描與台灣規範轉譯（透過 [shared/report-core.js](shared/report-core.js)
+共用同一份對應核心），彙整成全站報告。零基礎設施、本機執行。
+
+```sh
+npm run scan -- <url> [options]
+
+# 單頁
+npm run scan -- https://example.com --format both
+# 同源全站爬掃（深度 2、上限 50 頁）
+npm run scan -- https://example.com --depth 2 --max-pages 50 --format html
+# 掃描外部 URL 清單（相容 PolyMigrate 的 url_inventory.csv）
+npm run scan -- --url-list url_inventory.csv --format html
+```
+
+主要選項：`--depth`／`--max-pages`／`--delay`（禮貌間隔）／`--include`／`--exclude`／
+`--url-list`／`--level`／`--out`／`--format json｜html｜both`／`--chrome`／`--timeout`。
+輸出為結構化 JSON（可進 CI）與沿用擴充套件風格的自包含 HTML 報告（全站摘要＋最常見障礙＋
+逐頁明細）。
+
+**與 [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate) 的橋接**：`--url-list`
+相容 PolyMigrate 遷移工具產出的 `url_inventory.csv`；當清單帶 `lang` 欄時，額外輸出**逐語言**
+無障礙彙整，讓已遷移的多語站能對各語言版本分別檢視 a11y（例：中文版 vs 英文版各自的違規）。
+
+> 架構、範圍與里程碑見 [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md)。
 
 ## 限制聲明（重要）
 
