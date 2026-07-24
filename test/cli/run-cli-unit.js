@@ -120,6 +120,14 @@ eq('aggregate 需人工複核總數', agg.needsManualReviewTotal, 1);
 eq('aggregate topRules 首位為 image-alt', agg.topRules[0].axeId, 'image-alt');
 eq('aggregate topRules image-alt 跨頁元素數', agg.topRules[0].elements, 5);
 
+// targetSplit：依目標等級分「目標內／超出目標」（不含 unmapped）
+const bl = { A: 2, AA: 1, AAA: 3, unmapped: 1 };
+eq('targetSplit A → 目標內', cli.targetSplit(bl, 'A').within, 2);
+eq('targetSplit A → 超出', cli.targetSplit(bl, 'A').beyond, 4);
+eq('targetSplit AA → 目標內', cli.targetSplit(bl, 'AA').within, 3);
+eq('targetSplit AA → 超出', cli.targetSplit(bl, 'AA').beyond, 3);
+eq('targetSplit AAA → 超出恆為 0', cli.targetSplit(bl, 'AAA').beyond, 0);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 const fails = results.filter((r) => !r.ok).length;

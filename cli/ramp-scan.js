@@ -787,6 +787,7 @@ module.exports = {
   translateRule,
   parseUrlList,
   aggregate,
+  targetSplit,
   buildSiteHtml,
   buildPageHtml,
 };

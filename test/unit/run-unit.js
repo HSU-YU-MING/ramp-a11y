@@ -264,6 +264,17 @@ const mf = JSON.parse(fs.readFileSync(path.join(REPO, 'manifest.json'), 'utf8'))
 const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
 eq('版本一致（manifest === package）', mf.version, pkg.version);
 
+// ===== rules-map 資料完整性：twLevel 只能是 A/AA/AAA =====
+// CLI 的全站彙整以「不重複規則依等級」計數，並要求 A+AA+AAA+unmapped === 失敗規則總數；
+// 若某條 twLevel 出現髒值（如 "AA " 或 "1"），統計會與規則數靜默對不上，故在此把關。
+const rmapList = JSON.parse(fs.readFileSync(path.join(REPO, 'data/rules-map.json'), 'utf8'));
+const badLevels = rmapList.filter((r) => !['A', 'AA', 'AAA'].includes(r.twLevel));
+check(
+  'rules-map twLevel 皆為 A/AA/AAA',
+  badLevels.length === 0,
+  badLevels.map((r) => `${r.axeRuleId}:${JSON.stringify(r.twLevel)}`).join(', '),
+);
+
 const fails = results.filter((r) => !r.ok).length;
 console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
 process.exit(fails ? 1 : 0);
