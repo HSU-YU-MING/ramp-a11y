@@ -156,9 +156,9 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
-npm run test:unit    # 純函式單元測試（jsdom，含共用模組，不需 Chrome）：46 項
+npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：47 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
-npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整）：20 項
+npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：28 項
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：53 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
 ```
@@ -197,6 +197,10 @@ CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變�
 擴充套件掃單一分頁；若要**批次稽核整個網站**，repo 內附一支本機 CLI，對每頁跑**與擴充
 套件完全相同**的掃描與台灣規範轉譯（透過 [shared/report-core.js](shared/report-core.js)
 共用同一份對應核心），彙整成全站報告。零基礎設施、本機執行。
+
+同一套「規則→台灣準則」對應核心**同時驅動擴充套件（互動、單頁）與 CLI（批次、全站）**——
+核心資產一次撰寫、兩處複用，並以共用模組避免漂移。CLI 的 JSON 輸出可接進 CI pipeline，
+把「開發期單頁預檢」延伸成「可自動化的全站在地化稽核」。
 
 ```sh
 npm run scan -- <url> [options]
@@ -282,9 +286,10 @@ npm run scan -- --url-list url_inventory.csv --format html
   區塊斷句，並以「同一視覺列 top 分帶、列內 left 排序」比對朗讀先後偵測反序。
   目前落差偵測聚焦**同列水平反序**（高信心、低誤報）；多欄版面的跨欄閱讀順序與純垂直重排
   暫不標示，避免誤報。
-- [ ] 全站爬掃：如有需求，以獨立 CLI 工具實作（Node＋Puppeteer＋共用 rules-map.json），
-  不做進擴充套件（權限模型與架構考量見 commit 歷史）。架構與範圍規劃見
-  [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md)
+- [x] **全站爬掃 CLI**：以獨立本機 CLI 實作（Node＋Puppeteer＋與擴充套件共用對應核心），
+  不做進擴充套件（權限模型與架構考量見 commit 歷史）。三模式（單頁／同源 BFS／`--url-list`）、
+  JSON＋HTML 報告、與 PolyMigrate 橋接的逐語言彙整均已完成——見上方〈全站爬掃 CLI〉章節
+  與[架構規劃](docs/fullsite-cli-plan.md)。後續可選：`--concurrency` 並行加速。
 
 ## 授權與致謝
 

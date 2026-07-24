@@ -57,6 +57,22 @@ The four violations, with Ramp's simulated NVDA announcement:
 
 This case highlights Ramp's three design goals: **map to the Taiwan standard**, **preview the NVDA experience**, and **stay honest** — the 102 contrast cases are flagged for manual review rather than passed or failed, because no automated tool can reliably judge text contrast over background images.
 
+## Full-site CLI (`ramp-scan`)
+
+The extension scans one tab. To **audit a whole site**, the repo ships a local Node CLI that runs the **exact same** scan and Taiwan-standard mapping on every page — the extension (interactive, single-page) and the CLI (batch, whole-site) are driven by **one shared mapping core** ([`shared/report-core.js`](shared/report-core.js)), written once and reused, with the module boundary preventing drift. No backend, no hosting — it runs locally.
+
+```sh
+npm run scan -- https://example.com                          # single page
+npm run scan -- https://example.com --depth 2 --format html  # same-origin crawl → HTML report
+npm run scan -- --url-list url_inventory.csv --format html    # scan an external URL list
+```
+
+It emits structured **JSON** (drop into CI) and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.
+
+**Composes with [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate).** `--url-list` reads the `url_inventory.csv` produced by PolyMigrate (my i18n-first static-site migrator); when the list carries a `lang` column, Ramp additionally reports accessibility **per language** — so a migrated multilingual site can be audited for its Chinese and English versions separately (e.g. the zh page failing rules the en page doesn't). Two tools, one workflow: migrate the multilingual site, then audit each language's accessibility.
+
+> **Use responsibly:** crawling sends real requests. Default 250 ms spacing, single-threaded; scan sites you own or are authorized to test, and use `--delay` / `--max-pages` to bound load. Architecture and scope: [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md).
+
 ## Permissions
 
 Ramp does **not** request persistent all-sites access. It uses only:
@@ -80,8 +96,9 @@ All analysis runs locally in your browser; no data is sent to any server.
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 38 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 47 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
+npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 28 checks
 npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 53 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
 ```
