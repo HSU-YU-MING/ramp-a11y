@@ -250,7 +250,8 @@ CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變�
   目前落差偵測聚焦**同列水平反序**（高信心、低誤報）；多欄版面的跨欄閱讀順序與純垂直重排
   暫不標示，避免誤報。
 - [ ] 全站爬掃：如有需求，以獨立 CLI 工具實作（Node＋Puppeteer＋共用 rules-map.json），
-  不做進擴充套件（權限模型與架構考量見 commit 歷史）
+  不做進擴充套件（權限模型與架構考量見 commit 歷史）。架構與範圍規劃見
+  [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md)
 
 ## 授權與致謝
 
