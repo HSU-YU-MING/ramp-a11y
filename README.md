@@ -87,7 +87,16 @@ ramp-a11y/
 ├── vendor/
 │   ├── axe.min.js           # 本地打包的 axe-core（MV3 CSP 不允許遠端載入）
 │   └── axe-locale-zh_TW.js  # axe 官方 zh_TW 語言包（包裝為可注入的 JS）
-├── test/fixture.html        # 故意違規的測試素材頁
+├── test/
+│   ├── fixture.html         # 故意違規的測試素材頁
+│   ├── unit/                # 純函式單元測試（jsdom）
+│   ├── self-audit/          # popup 靜態無障礙契約測試
+│   ├── e2e/                 # 端對端迴歸測試（Puppeteer）
+│   └── nvda/                # 真實 NVDA 對照工具（Guidepup）
+├── scripts/pack.js          # 上架打包腳本（產生 dist/*.zip）
+├── eslint.config.js         # ESLint flat config
+├── .prettierrc.json         # Prettier 設定
+├── .github/workflows/ci.yml # GitHub Actions：品質閘門＋e2e
 └── icons/                   # 擴充套件圖示（佔位圖）
 ```
 
@@ -135,6 +144,18 @@ e2e 另在 CI 以 xvfb 虛擬顯示搭配 stable Chrome 跑完整流程。
   逐行）皆已驗證吻合**，表格座標「第 N 列 第 N 欄」等皆經真 NVDA 親口證實；過程中抓出的
   6 個用詞落差（編輯區、功能表按鈕、表格語序、進度值、清單項目數、地標後綴）均已修正。
 
+### e2e 疑難排解
+
+| 症狀 | 原因與解法 |
+|------|-----------|
+| `找不到 Chrome，請以環境變數 CHROME_PATH 指定` | 未在預設路徑找到 Chrome。設 `CHROME_PATH` 指向 chrome／chromium 執行檔，例如 `CHROME_PATH=/usr/bin/google-chrome npm test`。 |
+| 啟動後立即 `TargetCloseError: Target closed` | 多發生在 CI／root 環境：無 user namespace，Chromium 需 `--no-sandbox` 才能啟動。本專案在 `process.env.CI` 為真時**自動附加**該旗標，本機以真 Chrome 執行則維持沙箱，無須手動處理。 |
+| Linux／CI 上開不了視窗或卡住 | e2e 以 `headless:false` 開**真實視窗**，無頭環境需虛擬顯示：`xvfb-run --auto-servernum node test/e2e/run-e2e.js`。 |
+| 擴充套件載入失敗／`installExtension` 相關錯誤 | e2e 以 Puppeteer 的 `installExtension` 載入（Chrome **137 起**移除 `--load-extension`），需 **Chrome 137+**。 |
+| 讀不到分頁網址、或部分測試判定「無法檢測」 | 正式 manifest 僅有 `activeTab`，程式化開啟 popup 不算使用者手勢、Chrome 不核發授權。e2e 會複製一份加了 `<all_urls>` 的暫存副本繞過（真實 activeTab 授權只能由真人點工具列圖示驗證）。 |
+
+CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變數），本機執行只需確保裝有 Chrome 137+。
+
 ## 限制聲明（重要）
 
 - **自動化檢測僅能涵蓋約三到四成的無障礙問題。** 鍵盤操作動線、報讀軟體實際體驗、內容語意是否恰當等，仍必須以人工方式複核。
@@ -170,7 +191,7 @@ e2e 另在 CI 以 xvfb 虛擬顯示搭配 stable Chrome 跑完整流程。
 
 **時限性待辦**
 
-- [ ] **2026-11-30（115 年修正版生效日）**：發布 v1.1.0 版本切換
+- [ ] **2026-11-30（115 年修正版生效日）**：發布下一版本（v1.2.0）做規範切換（v1.1.0 已為 NVDA 報讀預覽版上架）
   - 移除 [content/scanner.js](content/scanner.js) 中 `duplicate-id` 的重新啟用（新版規範已刪除 4.1.1）
   - 退役 rules-map 中的 `duplicate-id` 條目
   - 清除 4.1.1 與 2.5.8 條目的過渡期附註（`noteZh`）
