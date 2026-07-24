@@ -8,6 +8,12 @@
 
 **[作品介紹與開發故事](https://cornhsu.com/ramp-a11y) · [Chrome 線上應用程式商店](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm) · MIT**
 
+## 操作示範
+
+![Ramp 操作示範：一鍵檢測、依等級分組的問題清單、展開看繁中解說與 NVDA 報讀預覽、點擊元素在頁面高亮定位，並切換朗讀順序與動態播報分頁](docs/ramp-demo.gif)
+
+> 於[測試素材頁](test/fixture.html)示範完整流程：**檢測 → 分等級問題清單 → 展開看「為什麼／如何修／NVDA 報讀預覽」→ 點元素在頁面高亮定位 → 切換「朗讀順序」與「動態播報」分頁**。
+
 ## 安裝
 
 👉 **[從 Chrome 線上應用程式商店安裝](https://chromewebstore.google.com/detail/bbdbehdknkmhpbolgohjlmikbfganhfm)**（Chrome／Edge 皆適用）
