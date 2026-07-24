@@ -1,6 +1,8 @@
 # 全站爬掃 CLI — 架構與範圍規劃
 
-> 狀態：規劃中（尚未實作）　｜　建立：2026-07-23　｜　對應路線圖：README「待辦與路線圖」第三階段
+> 狀態：**M1–M2 已實作**（單頁＋同源 BFS 爬蟲＋逐頁/全站彙整 JSON＋PolyMigrate `--url-list`
+> 橋接與逐語言報告）；M3（HTML 報告）、M4（抽共用模組）待做。　｜　建立：2026-07-23　｜
+> 對應路線圖：README「待辦與路線圖」第三階段　｜　程式：[cli/ramp-scan.js](../cli/ramp-scan.js)
 
 ## 1. 定位
 一支**本機 Node CLI**：給一個起始網址，爬同源頁面，對每頁跑**與擴充套件完全相同**的
@@ -88,12 +90,16 @@ npx ramp-scan <start-url> [options]
 
 ## 8. 里程碑
 
-| M | 內容 | 備註 |
+| M | 內容 | 狀態 |
 |---|---|---|
-| M1 | 單 URL CLI ＋ 參數 ＋ JSON 輸出 | 已有單頁原型 |
-| M2 | Frontier 爬蟲（BFS、去重、上限、同源）包住 M1 | 核心新工作 |
-| M3 | 彙整＋HTML 報告 | 復用匯出版型 |
-| M4 | 抽共用模組（translateRule＋報告）、擴充套件改用、README、npm script | 收尾＋防漂移 |
+| M1 | 單 URL CLI ＋ 參數 ＋ JSON 輸出 | ✅ 已完成 |
+| M2 | Frontier 爬蟲（BFS、去重、上限、同源、容錯）＋全站彙整 JSON ＋ `--url-list` PolyMigrate 橋接與逐語言報告 | ✅ 已完成 |
+| M3 | HTML 報告（復用擴充套件匯出版型渲染 site JSON） | ⬜ 待做 |
+| M4 | 抽共用模組（translateRule＋報告）、擴充套件改用、README、加測試 | ⬜ 待做 |
+
+> M2 一併完成了原列於 M3 的「彙整」（siteSummary＋topRules＋worstPages＋byLanguage JSON），
+> M3 僅餘 HTML 呈現。並行完成使用者選定的 PolyMigrate `--url-list` 橋接（相容 url_inventory.csv，
+> 有 lang 欄即輸出逐語言彙整）。並行度（--concurrency）仍為循序，留待日後。
 
 ## 9. 風險與因應
 
