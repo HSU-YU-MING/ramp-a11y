@@ -1,5 +1,7 @@
 # Ramp（ramp-a11y）
 
+[English](README.en.md) · [繁體中文](README.md)
+
 [![CI](https://github.com/HSU-YU-MING/ramp-a11y/actions/workflows/ci.yml/badge.svg)](https://github.com/HSU-YU-MING/ramp-a11y/actions/workflows/ci.yml)
 
 網頁無障礙（Web Accessibility / a11y）檢測工具 —— Chrome / Edge 瀏覽器擴充套件（Manifest V3）。
