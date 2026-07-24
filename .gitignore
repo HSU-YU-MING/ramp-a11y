@@ -14,3 +14,6 @@ dist/
 Thumbs.db
 .DS_Store
 test/nvda/last-run.json
+
+# CLI 掃描報告輸出
+ramp-report/

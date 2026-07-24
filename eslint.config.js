@@ -54,9 +54,9 @@ module.exports = [
     rules: commonRules,
   },
 
-  // Node + 瀏覽器端：e2e / nvda 以 puppeteer evaluate 注入瀏覽器情境的函式
+  // Node + 瀏覽器端：e2e / nvda / cli 以 puppeteer evaluate 注入瀏覽器情境的函式
   {
-    files: ['test/e2e/**/*.js', 'test/nvda/**/*.js'],
+    files: ['test/e2e/**/*.js', 'test/nvda/**/*.js', 'cli/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
