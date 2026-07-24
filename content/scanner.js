@@ -129,9 +129,22 @@
   // 「必須有可朗讀名稱」的角色：這些角色缺名稱才是真正的障礙，才顯示「（無可朗讀名稱）」。
   // 清單／表格／地標等結構角色本就不需要名稱，缺名稱屬正常，不加醒目提示。
   const NVDA_NAME_REQUIRED = {
-    button: 1, link: 1, checkbox: 1, radio: 1, textbox: 1, searchbox: 1,
-    combobox: 1, listbox: 1, switch: 1, menuitem: 1, tab: 1, slider: 1,
-    spinbutton: 1, progressbar: 1, img: 1, treeitem: 1,
+    button: 1,
+    link: 1,
+    checkbox: 1,
+    radio: 1,
+    textbox: 1,
+    searchbox: 1,
+    combobox: 1,
+    listbox: 1,
+    switch: 1,
+    menuitem: 1,
+    tab: 1,
+    slider: 1,
+    spinbutton: 1,
+    progressbar: 1,
+    img: 1,
+    treeitem: 1,
   };
 
   /**
@@ -149,7 +162,9 @@
     // 勾選（checkbox / radio / switch）
     const ariaChecked = attr('aria-checked');
     if (ariaChecked != null) {
-      states.push(ariaChecked === 'mixed' ? '部分勾選' : ariaChecked === 'true' ? '勾選' : '沒勾選');
+      states.push(
+        ariaChecked === 'mixed' ? '部分勾選' : ariaChecked === 'true' ? '勾選' : '沒勾選',
+      );
     } else if (typeof el.checked === 'boolean' && (el.type === 'checkbox' || el.type === 'radio')) {
       states.push(el.checked ? '勾選' : '沒勾選');
     }
@@ -193,16 +208,25 @@
    */
   function nvdaValue(el, roleEn) {
     const attr = (n) => el.getAttribute(n);
-    if (roleEn === 'progressbar' || roleEn === 'meter' || el.tagName === 'PROGRESS' || el.tagName === 'METER') {
+    if (
+      roleEn === 'progressbar' ||
+      roleEn === 'meter' ||
+      el.tagName === 'PROGRESS' ||
+      el.tagName === 'METER'
+    ) {
       // 經真 NVDA 對照驗證：靜態讀出的是原始值（如「75」），不換算成「百分之 N」
       //（「百分之 %d」是進度「更新時」的播報用語，非靜態快照）
-      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
-      const now = attr('aria-valuenow'); if (now != null) return now.trim();
+      const vt = attr('aria-valuetext');
+      if (vt) return vt.trim();
+      const now = attr('aria-valuenow');
+      if (now != null) return now.trim();
       return el.value != null && el.value !== '' ? String(el.value) : null;
     }
     if (roleEn === 'slider' || roleEn === 'spinbutton') {
-      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
-      const now = attr('aria-valuenow'); if (now != null) return now.trim();
+      const vt = attr('aria-valuetext');
+      if (vt) return vt.trim();
+      const now = attr('aria-valuenow');
+      if (now != null) return now.trim();
       return el.value != null && el.value !== '' ? String(el.value) : null;
     }
     if (el.tagName === 'SELECT') {
@@ -210,7 +234,8 @@
       return opt ? (opt.textContent || '').trim() || null : null;
     }
     if (roleEn === 'combobox') {
-      const vt = attr('aria-valuetext'); if (vt) return vt.trim();
+      const vt = attr('aria-valuetext');
+      if (vt) return vt.trim();
       return el.value != null && String(el.value).trim() ? String(el.value).trim() : null;
     }
     if (roleEn === 'textbox' || roleEn === 'searchbox') {
@@ -229,16 +254,24 @@
     const parent = el.parentElement;
     if (el.tagName === 'LI' && parent && /^(UL|OL|MENU)$/.test(parent.tagName)) {
       const items = Array.prototype.filter.call(parent.children, (c) => c.tagName === 'LI');
-      const i = items.indexOf(el); if (i >= 0) return items.length + ' 之 ' + (i + 1);
+      const i = items.indexOf(el);
+      if (i >= 0) return items.length + ' 之 ' + (i + 1);
     }
     if (el.tagName === 'OPTION') {
       const sel = el.closest('select');
-      if (sel) { const opts = Array.prototype.slice.call(sel.querySelectorAll('option')); const i = opts.indexOf(el); if (i >= 0) return opts.length + ' 之 ' + (i + 1); }
+      if (sel) {
+        const opts = Array.prototype.slice.call(sel.querySelectorAll('option'));
+        const i = opts.indexOf(el);
+        if (i >= 0) return opts.length + ' 之 ' + (i + 1);
+      }
     }
     if (roleEn === 'radio' && el.name) {
       const nm = window.CSS && CSS.escape ? CSS.escape(el.name) : el.name;
-      const radios = Array.prototype.slice.call(document.querySelectorAll('input[type="radio"][name="' + nm + '"]'));
-      const i = radios.indexOf(el); if (i >= 0) return radios.length + ' 之 ' + (i + 1);
+      const radios = Array.prototype.slice.call(
+        document.querySelectorAll('input[type="radio"][name="' + nm + '"]'),
+      );
+      const i = radios.indexOf(el);
+      if (i >= 0) return radios.length + ' 之 ' + (i + 1);
     }
     return null;
   }
@@ -247,9 +280,10 @@
    *  經真 NVDA 對照驗證：清單方塊（listbox／select multiple）不念項目數 */
   function nvdaItemCount(el, roleEn) {
     if (roleEn !== 'list') return null;
-    const n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
-      ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-      : el.querySelectorAll('[role="listitem"]').length;
+    const n =
+      el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU'
+        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+        : el.querySelectorAll('[role="listitem"]').length;
     return n > 0 ? '有 ' + n + ' 項' : null;
   }
 
@@ -257,10 +291,15 @@
   function nvdaDescription(el, name) {
     const ref = el.getAttribute('aria-describedby');
     if (ref) {
-      const txt = ref.trim().split(/\s+/).map((id) => {
-        const t = document.getElementById(id);
-        return t ? (t.textContent || '').trim() : '';
-      }).filter(Boolean).join(' ');
+      const txt = ref
+        .trim()
+        .split(/\s+/)
+        .map((id) => {
+          const t = document.getElementById(id);
+          return t ? (t.textContent || '').trim() : '';
+        })
+        .filter(Boolean)
+        .join(' ');
       if (txt) return txt.slice(0, 100);
     }
     const title = (el.getAttribute('title') || '').trim();
@@ -280,7 +319,7 @@
     let g = tableGridCache.get(table);
     if (g) return g;
     const rows = table.rows; // 全表 <tr>，文件順序
-    const occ = [];          // occ[r][c] = 佔用該格點的儲存格
+    const occ = []; // occ[r][c] = 佔用該格點的儲存格
     const coords = new Map(); // 儲存格 → { row, col }（1-based，左上格）
     let colCount = 0;
     for (let r = 0; r < rows.length; r++) {
@@ -295,7 +334,8 @@
         coords.set(cellEl, { row: r + 1, col: c + 1 });
         for (let dr = 0; dr < rowspan; dr++) {
           for (let dc = 0; dc < colspan; dc++) {
-            const rr = r + dr, cc = c + dc;
+            const rr = r + dr,
+              cc = c + dc;
             if (!occ[rr]) occ[rr] = [];
             occ[rr][cc] = cellEl;
           }
@@ -319,11 +359,14 @@
     if (!pos) return null;
     const coord = '第 ' + pos.row + ' 列 第 ' + pos.col + ' 欄';
     // 欄標題＝該欄第一列的格（若為 th）；列標題＝該列第一欄的格（若為 th）
-    let colHeader = null, rowHeader = null;
+    let colHeader = null,
+      rowHeader = null;
     const topCell = grid.occ[0] && grid.occ[0][pos.col - 1];
-    if (topCell && topCell.tagName === 'TH' && topCell !== el) colHeader = (topCell.textContent || '').trim() || null;
+    if (topCell && topCell.tagName === 'TH' && topCell !== el)
+      colHeader = (topCell.textContent || '').trim() || null;
     const leftCell = grid.occ[pos.row - 1] && grid.occ[pos.row - 1][0];
-    if (leftCell && leftCell.tagName === 'TH' && leftCell !== el) rowHeader = (leftCell.textContent || '').trim() || null;
+    if (leftCell && leftCell.tagName === 'TH' && leftCell !== el)
+      rowHeader = (leftCell.textContent || '').trim() || null;
     return { coord, colHeader, rowHeader };
   }
 
@@ -331,7 +374,9 @@
   function nvdaTableDims(el) {
     if (el.tagName !== 'TABLE') return null;
     const grid = tableGrid(el);
-    return grid.rowCount && grid.colCount ? '表格有 ' + grid.rowCount + ' 列 ' + grid.colCount + ' 欄' : null;
+    return grid.rowCount && grid.colCount
+      ? '表格有 ' + grid.rowCount + ' 列 ' + grid.colCount + ' 欄'
+      : null;
   }
 
   /**
@@ -350,8 +395,16 @@
 
     let name = '';
     let roleEn = null;
-    try { name = (commons.text.accessibleText(el) || '').trim(); } catch (e) { /* 保底 */ }
-    try { roleEn = commons.aria.getRole(el); } catch (e) { /* 保底 */ }
+    try {
+      name = (commons.text.accessibleText(el) || '').trim();
+    } catch (e) {
+      /* 保底 */
+    }
+    try {
+      roleEn = commons.aria.getRole(el);
+    } catch (e) {
+      /* 保底 */
+    }
 
     // NVDA 不朗讀的純結構角色（generic 等）→ 直接略過，避免把整個容器的內文
     // 誤當成「名稱」念出來（例如未加地標的 <section> 會回傳一大段子孫文字）。
@@ -362,7 +415,8 @@
     if (announcedRoleEn === 'heading') {
       const lvl =
         Number(el.getAttribute('aria-level')) ||
-        ({ H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 }[el.tagName] || 0);
+        { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 }[el.tagName] ||
+        0;
       roleZh = lvl ? `標題第 ${lvl} 級` : '標題';
       nameRequired = true;
     } else if (announcedRoleEn) {
@@ -393,15 +447,15 @@
     const dims = nvdaTableDims(el);
     if (dims) itemCount = itemCount || dims;
     return {
-      name: name || null,                     // null 表示無可朗讀名稱
-      role: roleZh,                           // 已核對的中文角色（含標題階層）；null 表示未收錄
+      name: name || null, // null 表示無可朗讀名稱
+      role: roleZh, // 已核對的中文角色（含標題階層）；null 表示未收錄
       roleEn: roleZh ? null : announcedRoleEn, // 未收錄時保留英文 role 供 UI 標示，不杜撰中文
-      nameRequired,                           // 此角色是否必須有名稱（決定是否顯示「無可朗讀名稱」）
+      nameRequired, // 此角色是否必須有名稱（決定是否顯示「無可朗讀名稱」）
       value: value ? value.slice(0, 60) : null, // 目前值／內容（編輯區、下拉、滑桿、進度）
       states: nvdaStates(el),
-      position,     // 集合位置「N 之 M」或儲存格座標「第 N 列 第 N 欄」
-      itemCount,    // 清單項目數「有 N 項」或表格維度「表格有 N 欄 M 列」
-      description,  // aria-describedby／title 描述，或儲存格的欄/列標題
+      position, // 集合位置「N 之 M」或儲存格座標「第 N 列 第 N 欄」
+      itemCount, // 清單項目數「有 N 項」或表格維度「表格有 N 欄 M 列」
+      description, // aria-describedby／title 描述，或儲存格的欄/列標題
     };
   }
 
@@ -411,9 +465,52 @@
   // （flex order、float:right、RTL 等造成的 WCAG 1.3.2「有意義順序」問題）。
 
   const RO_SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'LINK', 'META']);
-  const RO_OBJECT_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'IMG', 'SVG', 'IFRAME', 'AUDIO', 'VIDEO', 'SUMMARY', 'AREA', 'CANVAS', 'PROGRESS', 'METER']);
-  const RO_WIDGET_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'slider', 'spinbutton', 'combobox', 'textbox', 'searchbox', 'option', 'img', 'progressbar', 'treeitem']);
-  const RO_OBJ_FALLBACK = { IFRAME: '框架', SVG: '圖形', AUDIO: '音訊', VIDEO: '視訊', SUMMARY: '摘要', CANVAS: '畫布', AREA: '熱區' };
+  const RO_OBJECT_TAGS = new Set([
+    'A',
+    'BUTTON',
+    'INPUT',
+    'SELECT',
+    'TEXTAREA',
+    'IMG',
+    'SVG',
+    'IFRAME',
+    'AUDIO',
+    'VIDEO',
+    'SUMMARY',
+    'AREA',
+    'CANVAS',
+    'PROGRESS',
+    'METER',
+  ]);
+  const RO_WIDGET_ROLES = new Set([
+    'button',
+    'link',
+    'checkbox',
+    'radio',
+    'switch',
+    'tab',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'slider',
+    'spinbutton',
+    'combobox',
+    'textbox',
+    'searchbox',
+    'option',
+    'img',
+    'progressbar',
+    'treeitem',
+  ]);
+  const RO_OBJ_FALLBACK = {
+    IFRAME: '框架',
+    SVG: '圖形',
+    AUDIO: '音訊',
+    VIDEO: '視訊',
+    SUMMARY: '摘要',
+    CANVAS: '畫布',
+    AREA: '熱區',
+  };
 
   function roIsHidden(el) {
     if (el.closest && el.closest('[aria-hidden="true"]')) return true;
@@ -432,7 +529,14 @@
   }
   function roIsBlock(el) {
     const d = getComputedStyle(el).display;
-    return d && d !== 'inline' && d !== 'inline-block' && d !== 'inline-flex' && d !== 'inline-grid' && d !== 'contents';
+    return (
+      d &&
+      d !== 'inline' &&
+      d !== 'inline-block' &&
+      d !== 'inline-flex' &&
+      d !== 'inline-grid' &&
+      d !== 'contents'
+    );
   }
   function roBlockRole(el) {
     const t = el.tagName;
@@ -449,8 +553,14 @@
 
   // 地標名稱（校對自 NVDA 官方 zh_TW）
   const RO_LANDMARK_ZH = {
-    banner: '橫幅區', navigation: '導覽區', main: '主要內容區', complementary: '補充區',
-    contentinfo: '資訊區', region: '區域', search: '搜尋區', form: '表單區',
+    banner: '橫幅區',
+    navigation: '導覽區',
+    main: '主要內容區',
+    complementary: '補充區',
+    contentinfo: '資訊區',
+    region: '區域',
+    search: '搜尋區',
+    form: '表單區',
   };
   function roHasName(el) {
     return !!(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby'));
@@ -463,15 +573,23 @@
       return RO_LANDMARK_ZH[roleAttr];
     }
     switch (el.tagName) {
-      case 'NAV': return '導覽區';
-      case 'MAIN': return '主要內容區';
-      case 'ASIDE': return '補充區';
+      case 'NAV':
+        return '導覽區';
+      case 'MAIN':
+        return '主要內容區';
+      case 'ASIDE':
+        return '補充區';
       // header/footer 僅在非巢狀於 article/section 等時才是地標
-      case 'HEADER': return el.closest('article,aside,main,nav,section') ? null : '橫幅區';
-      case 'FOOTER': return el.closest('article,aside,main,nav,section') ? null : '資訊區';
-      case 'SECTION': return roHasName(el) ? '區域' : null; // 具名 section 才是地標
-      case 'FORM': return roHasName(el) ? '表單區' : null;
-      default: return null;
+      case 'HEADER':
+        return el.closest('article,aside,main,nav,section') ? null : '橫幅區';
+      case 'FOOTER':
+        return el.closest('article,aside,main,nav,section') ? null : '資訊區';
+      case 'SECTION':
+        return roHasName(el) ? '區域' : null; // 具名 section 才是地標
+      case 'FORM':
+        return roHasName(el) ? '表單區' : null;
+      default:
+        return null;
     }
   }
   /** 需在朗讀順序中標示邊界的區域（地標／表格），含進入與離開的朗讀文字 */
@@ -480,17 +598,27 @@
     if (lm) {
       // 「地標」後綴為真 NVDA 實際播報格式（如「主要選單, 導覽區 地標」）
       const label = (el.getAttribute('aria-label') || '').trim();
-      return { kind: 'landmark', enter: (label ? label + ' ' : '') + lm + ' 地標', exit: '離開' + lm };
+      return {
+        kind: 'landmark',
+        enter: (label ? label + ' ' : '') + lm + ' 地標',
+        exit: '離開' + lm,
+      };
     }
     if (el.tagName === 'TABLE') {
       return { kind: 'table', enter: nvdaTableDims(el) || '表格', exit: '離開表格' };
     }
     // 真清單（ul/ol/role=list）念「清單 有 N 項」；listbox 不念項目數（經真 NVDA 驗證）
     const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
-    if (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU' || roleAttr === 'list') {
-      const n = (el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU')
-        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-        : el.querySelectorAll('[role="listitem"]').length;
+    if (
+      el.tagName === 'UL' ||
+      el.tagName === 'OL' ||
+      el.tagName === 'MENU' ||
+      roleAttr === 'list'
+    ) {
+      const n =
+        el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU'
+          ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+          : el.querySelectorAll('[role="listitem"]').length;
       if (n > 0) return { kind: 'list', enter: '清單 有 ' + n + ' 項', exit: '離開清單' };
     }
     return null;
@@ -506,8 +634,16 @@
       range.setStartBefore(nodes[0]);
       range.setEndAfter(nodes[nodes.length - 1]);
       const r = range.getBoundingClientRect();
-      if (r.width || r.height) return { top: r.top + window.scrollY, left: r.left + window.scrollX, w: r.width, h: r.height };
-    } catch (e) { /* 保底 */ }
+      if (r.width || r.height)
+        return {
+          top: r.top + window.scrollY,
+          left: r.left + window.scrollX,
+          w: r.width,
+          h: r.height,
+        };
+    } catch (e) {
+      /* 保底 */
+    }
     return null;
   }
 
@@ -516,20 +652,31 @@
   const RO_ROW_TOL = 14; // 視覺「同列」的 top 容差（px）
   function roComputeFlags(stops) {
     const R = stops.filter((s) => s.rect && s.rect.w > 0 && s.rect.h > 0);
-    R.forEach((s, k) => { s._read = k; });
+    R.forEach((s, k) => {
+      s._read = k;
+    });
     const sorted = R.slice().sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
-    const rows = []; let cur = null;
+    const rows = [];
+    let cur = null;
     for (const s of sorted) {
-      if (!cur || s.rect.top - cur.top0 > RO_ROW_TOL) { cur = { top0: s.rect.top, items: [s] }; rows.push(cur); }
-      else cur.items.push(s);
+      if (!cur || s.rect.top - cur.top0 > RO_ROW_TOL) {
+        cur = { top0: s.rect.top, items: [s] };
+        rows.push(cur);
+      } else cur.items.push(s);
     }
     let flaggedCount = 0;
     for (const r of rows) {
       r.items.sort((a, b) => a.rect.left - b.rect.left);
       for (let j = 0; j < r.items.length - 1; j++) {
         if (r.items[j]._read > r.items[j + 1]._read) {
-          if (!r.items[j].flagged) { r.items[j].flagged = true; flaggedCount++; }
-          if (!r.items[j + 1].flagged) { r.items[j + 1].flagged = true; flaggedCount++; }
+          if (!r.items[j].flagged) {
+            r.items[j].flagged = true;
+            flaggedCount++;
+          }
+          if (!r.items[j + 1].flagged) {
+            r.items[j + 1].flagged = true;
+            flaggedCount++;
+          }
         }
       }
     }
@@ -545,22 +692,45 @@
     // nvdaPreview 依賴 axe 虛擬樹（getRole／accessibleText），需先 setup 重建
     let didSetup = false;
     try {
-      if (window.axe && typeof window.axe.setup === 'function') { window.axe.setup(document); didSetup = true; }
-    } catch (e) { /* setup 失敗仍可線性化，物件名稱改用保底 */ }
+      if (window.axe && typeof window.axe.setup === 'function') {
+        window.axe.setup(document);
+        didSetup = true;
+      }
+    } catch (e) {
+      /* setup 失敗仍可線性化，物件名稱改用保底 */
+    }
 
-    let buf = '', bufNodes = [], bufEl = null;
+    let buf = '',
+      bufNodes = [],
+      bufEl = null;
     function flush() {
       const text = buf.replace(/\s+/g, ' ').trim();
-      const nodes = bufNodes, el = bufEl;
-      buf = ''; bufNodes = []; bufEl = null;
+      const nodes = bufNodes,
+        el = bufEl;
+      buf = '';
+      bufNodes = [];
+      bufEl = null;
       if (!text || !el || stops.length >= MAX) return;
       const roIndex = stops.length;
-      try { el.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
+      try {
+        el.setAttribute('data-ramp-ro', roIndex);
+      } catch (e) {
+        /* 忽略 */
+      }
       const stop = {
-        roIndex, kind: 'text', role: roBlockRole(el),
-        text: text.slice(0, 140), name: null, nameRequired: false, states: [],
-        value: null, position: null, itemCount: null, description: null,
-        flagged: false, rect: roRangeRect(nodes) || roRect(el),
+        roIndex,
+        kind: 'text',
+        role: roBlockRole(el),
+        text: text.slice(0, 140),
+        name: null,
+        nameRequired: false,
+        states: [],
+        value: null,
+        position: null,
+        itemCount: null,
+        description: null,
+        flagged: false,
+        rect: roRangeRect(nodes) || roRect(el),
       };
       // 表格儲存格：補座標與欄/列標題
       if (el.tagName === 'TD' || el.tagName === 'TH') {
@@ -581,55 +751,121 @@
     function pushBoundary(kind, text, dir) {
       if (stops.length >= MAX) return;
       stops.push({
-        roIndex: stops.length, kind, boundary: dir, role: null, text,
-        name: null, nameRequired: false, states: [], value: null, position: null,
-        itemCount: null, description: null, flagged: false, rect: null,
+        roIndex: stops.length,
+        kind,
+        boundary: dir,
+        role: null,
+        text,
+        name: null,
+        nameRequired: false,
+        states: [],
+        value: null,
+        position: null,
+        itemCount: null,
+        description: null,
+        flagged: false,
+        rect: null,
       });
     }
     function pushObject(c) {
       if (stops.length >= MAX) return;
       flush(); // 物件前的文字先斷句，維持朗讀先後
       const roIndex = stops.length;
-      let name = null, role = null, states = [], nameRequired = false;
-      let value = null, position = null, itemCount = null, description = null;
+      let name = null,
+        role = null,
+        states = [],
+        nameRequired = false;
+      let value = null,
+        position = null,
+        itemCount = null,
+        description = null;
       const nv = nvdaPreview(c);
       if (nv) {
-        name = nv.name; role = nv.role || nv.roleEn; states = nv.states; nameRequired = nv.nameRequired;
-        value = nv.value; position = nv.position; itemCount = nv.itemCount; description = nv.description;
-      } else { role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase(); } // getRole 無角色時的保底
+        name = nv.name;
+        role = nv.role || nv.roleEn;
+        states = nv.states;
+        nameRequired = nv.nameRequired;
+        value = nv.value;
+        position = nv.position;
+        itemCount = nv.itemCount;
+        description = nv.description;
+      } else {
+        role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase();
+      } // getRole 無角色時的保底
       // 若物件是清單項目的唯一內容（li 無自身文字，如 <li><a>選單</a></li>），
       // 把清單位置掛到物件上——NVDA 會在念出該連結時一併報位置。
       if (!position && c.closest) {
         const li = c.closest('li');
         if (li && li.parentElement && /^(UL|OL|MENU)$/.test(li.parentElement.tagName)) {
-          const hasOwnText = Array.prototype.some.call(li.childNodes, (n) => n.nodeType === 3 && n.nodeValue.trim());
-          if (!hasOwnText) { const lp = nvdaPosition(li, 'listitem'); if (lp) position = lp; }
+          const hasOwnText = Array.prototype.some.call(
+            li.childNodes,
+            (n) => n.nodeType === 3 && n.nodeValue.trim(),
+          );
+          if (!hasOwnText) {
+            const lp = nvdaPosition(li, 'listitem');
+            if (lp) position = lp;
+          }
         }
       }
-      try { c.setAttribute('data-ramp-ro', roIndex); } catch (e) { /* 忽略 */ }
-      stops.push({ roIndex, kind: 'object', role, text: null, name, nameRequired, states,
-        value, position, itemCount, description, flagged: false, rect: roRect(c) });
+      try {
+        c.setAttribute('data-ramp-ro', roIndex);
+      } catch (e) {
+        /* 忽略 */
+      }
+      stops.push({
+        roIndex,
+        kind: 'object',
+        role,
+        text: null,
+        name,
+        nameRequired,
+        states,
+        value,
+        position,
+        itemCount,
+        description,
+        flagged: false,
+        rect: roRect(c),
+      });
     }
     function walk(el, blockEl) {
       for (let c = el.firstChild; c && stops.length < MAX; c = c.nextSibling) {
-        if (c.nodeType === 3) { // 文字節點：累積到目前區塊的朗讀緩衝
-          if (c.nodeValue && c.nodeValue.trim()) { if (!bufEl) bufEl = blockEl; bufNodes.push(c); buf += c.nodeValue; }
+        if (c.nodeType === 3) {
+          // 文字節點：累積到目前區塊的朗讀緩衝
+          if (c.nodeValue && c.nodeValue.trim()) {
+            if (!bufEl) bufEl = blockEl;
+            bufNodes.push(c);
+            buf += c.nodeValue;
+          }
           continue;
         }
         if (c.nodeType !== 1) continue;
         if (RO_SKIP_TAGS.has(c.tagName) || roIsHidden(c)) continue;
-        if (roIsObject(c)) { pushObject(c); continue; } // 物件為獨立停點，不深入其子樹
-        const bd = roBoundary(c);         // 地標／表格邊界
+        if (roIsObject(c)) {
+          pushObject(c);
+          continue;
+        } // 物件為獨立停點，不深入其子樹
+        const bd = roBoundary(c); // 地標／表格邊界
         const blk = roIsBlock(c);
-        if (blk || bd) flush();           // 進入區塊/邊界前先斷句
+        if (blk || bd) flush(); // 進入區塊/邊界前先斷句
         if (bd) pushBoundary(bd.kind, bd.enter, 'enter');
-        walk(c, (blk || bd) ? c : blockEl);
-        if (blk || bd) flush();           // 離開區塊/邊界後再斷句
+        walk(c, blk || bd ? c : blockEl);
+        if (blk || bd) flush(); // 離開區塊/邊界後再斷句
         if (bd) pushBoundary(bd.kind, bd.exit, 'exit');
       }
     }
-    try { walk(document.body, document.body); flush(); }
-    finally { if (didSetup) { try { window.axe.teardown(); } catch (e) { /* 忽略 */ } } }
+    try {
+      walk(document.body, document.body);
+      flush();
+    } finally {
+      if (didSetup) {
+        try {
+          window.axe.teardown();
+        } catch (e) {
+          /* 忽略 */
+        }
+      }
+    }
 
     // 視覺順序比對：標記同一視覺列上朗讀順序反序的落差（抽為純函式 roComputeFlags）
     const flaggedCount = roComputeFlags(stops);
@@ -640,11 +876,18 @@
       truncated: stops.length >= MAX,
       flaggedCount,
       stops: stops.map((s) => ({
-        roIndex: s.roIndex, kind: s.kind, role: s.role,
-        name: s.name != null ? s.name : null, nameRequired: !!s.nameRequired,
-        text: s.text != null ? s.text : null, states: s.states || [], flagged: !!s.flagged,
-        value: s.value != null ? s.value : null, position: s.position != null ? s.position : null,
-        itemCount: s.itemCount != null ? s.itemCount : null, description: s.description != null ? s.description : null,
+        roIndex: s.roIndex,
+        kind: s.kind,
+        role: s.role,
+        name: s.name != null ? s.name : null,
+        nameRequired: !!s.nameRequired,
+        text: s.text != null ? s.text : null,
+        states: s.states || [],
+        flagged: !!s.flagged,
+        value: s.value != null ? s.value : null,
+        position: s.position != null ? s.position : null,
+        itemCount: s.itemCount != null ? s.itemCount : null,
+        description: s.description != null ? s.description : null,
         boundary: s.boundary || null,
       })),
     };
@@ -671,10 +914,16 @@
   // polite／role=status 等目前這句念完再念。以 MutationObserver 監看這些區域的變化，
   // 把 NVDA 會播報的內容與時機累積到緩衝區，供 popup 呈現成時間軸（動態模擬）。
 
-  const LIVE_SEL = '[aria-live], [role="alert"], [role="status"], [role="log"], [role="timer"], [role="marquee"], output';
+  const LIVE_SEL =
+    '[aria-live], [role="alert"], [role="status"], [role="log"], [role="timer"], [role="marquee"], output';
 
   // 監看狀態掛在 window 上，跨多次注入與 popup 開關持續累積（頁面重整才清空）
-  window.__rampA11yLive = window.__rampA11yLive || { log: [], observer: null, on: false, timer: null };
+  window.__rampA11yLive = window.__rampA11yLive || {
+    log: [],
+    observer: null,
+    on: false,
+    timer: null,
+  };
 
   // popup 失焦關閉後無法主動停止觀察者；以「keepalive」綁定生命週期：
   // popup 每次輪詢（__rampA11yLiveGet）會重設計時器，停止輪詢逾時即自動斷開，
@@ -683,7 +932,9 @@
   function liveKeepalive() {
     const s = window.__rampA11yLive;
     if (s.timer) clearTimeout(s.timer);
-    s.timer = setTimeout(() => { if (window.__rampA11yLiveStop) window.__rampA11yLiveStop(); }, LIVE_KEEPALIVE_MS);
+    s.timer = setTimeout(() => {
+      if (window.__rampA11yLiveStop) window.__rampA11yLiveStop();
+    }, LIVE_KEEPALIVE_MS);
   }
 
   /** 解析即時區域的播報優先度：assertive（立即）／polite（依序）／null（不播報） */
@@ -694,7 +945,8 @@
     if (al === 'polite') return 'polite';
     const role = (region.getAttribute('role') || '').toLowerCase();
     if (role === 'alert') return 'assertive';
-    if (role === 'status' || role === 'log' || role === 'timer' || role === 'marquee') return 'polite';
+    if (role === 'status' || role === 'log' || role === 'timer' || role === 'marquee')
+      return 'polite';
     return region.tagName === 'OUTPUT' ? 'polite' : 'polite';
   }
 
@@ -708,8 +960,11 @@
     const buf = window.__rampA11yLive.log;
     const last = buf[buf.length - 1];
     if (last && last.text === t && last.politeness === pol) return; // 連續同內容不重複
-    const src = region.getAttribute('role')
-      || (region.getAttribute('aria-live') ? 'aria-live=' + region.getAttribute('aria-live') : region.tagName.toLowerCase());
+    const src =
+      region.getAttribute('role') ||
+      (region.getAttribute('aria-live')
+        ? 'aria-live=' + region.getAttribute('aria-live')
+        : region.tagName.toLowerCase());
     buf.push({ ts: Date.now(), politeness: pol, text: t.slice(0, 200), source: src });
     if (buf.length > 100) buf.shift(); // 上限，避免無限成長
   }
@@ -721,7 +976,8 @@
     try {
       const obs = new MutationObserver((muts) => {
         for (const m of muts) {
-          const node = m.target && m.target.nodeType === 1 ? m.target : (m.target && m.target.parentElement);
+          const node =
+            m.target && m.target.nodeType === 1 ? m.target : m.target && m.target.parentElement;
           const region = node && node.closest ? node.closest(LIVE_SEL) : null;
           if (!region) continue;
           if (region.getAttribute('aria-atomic') === 'true') {
@@ -730,7 +986,9 @@
             liveRecord(region, m.target.nodeValue);
           } else if (m.type === 'childList' && m.addedNodes.length) {
             let added = '';
-            m.addedNodes.forEach((n) => { added += ' ' + (n.textContent != null ? n.textContent : (n.nodeValue || '')); });
+            m.addedNodes.forEach((n) => {
+              added += ' ' + (n.textContent != null ? n.textContent : n.nodeValue || '');
+            });
             liveRecord(region, added || region.textContent);
           }
         }
@@ -748,8 +1006,18 @@
   /** 停止監看（緩衝區保留） */
   window.__rampA11yLiveStop = function () {
     const s = window.__rampA11yLive;
-    if (s.observer) { try { s.observer.disconnect(); } catch (e) { /* 忽略 */ } s.observer = null; }
-    if (s.timer) { clearTimeout(s.timer); s.timer = null; }
+    if (s.observer) {
+      try {
+        s.observer.disconnect();
+      } catch (e) {
+        /* 忽略 */
+      }
+      s.observer = null;
+    }
+    if (s.timer) {
+      clearTimeout(s.timer);
+      s.timer = null;
+    }
     s.on = false;
     return true;
   };
@@ -839,7 +1107,11 @@
       };
     } finally {
       if (didSetup) {
-        try { window.axe.teardown(); } catch (e) { /* 還原失敗不影響已算好的結果 */ }
+        try {
+          window.axe.teardown();
+        } catch (e) {
+          /* 還原失敗不影響已算好的結果 */
+        }
       }
     }
     return serialized;
@@ -847,7 +1119,16 @@
 
   // 內部純函式的測試掛勾（供 test/unit 存取；不影響正式行為，也不被 popup 使用）
   window.__rampA11yInternals = {
-    nvdaValue, nvdaPosition, nvdaItemCount, nvdaDescription, nvdaStates,
-    nvdaTableCell, nvdaTableDims, livePoliteness, roLandmark, roBoundary, roComputeFlags,
+    nvdaValue,
+    nvdaPosition,
+    nvdaItemCount,
+    nvdaDescription,
+    nvdaStates,
+    nvdaTableCell,
+    nvdaTableDims,
+    livePoliteness,
+    roLandmark,
+    roBoundary,
+    roComputeFlags,
   };
 })();

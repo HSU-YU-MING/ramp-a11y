@@ -28,9 +28,7 @@
     "titleZh": "圖片缺少替代文字",
     "whyZh": "報讀軟體無法描述沒有 alt 的圖片，視障使用者會錯過圖片所傳達的資訊。",
     "howZh": "為有意義的圖片加上描述性的 alt 文字；純裝飾性圖片則使用空的 alt（alt=\"\"）。",
-    "twCheckCodes": [
-      "HM1110100C"
-    ]
+    "twCheckCodes": ["HM1110100C"]
   },
   {
     "axeRuleId": "input-image-alt",
@@ -41,9 +39,7 @@
     "titleZh": "圖片按鈕缺少替代文字",
     "whyZh": "<input type=\"image\"> 沒有 alt 時，報讀軟體無法說明這個按鈕的功能。",
     "howZh": "為圖片按鈕加上描述其動作的 alt（例如「搜尋」）。",
-    "twCheckCodes": [
-      "HM1110104C"
-    ]
+    "twCheckCodes": ["HM1110104C"]
   },
   {
     "axeRuleId": "object-alt",
@@ -54,9 +50,7 @@
     "titleZh": "<object> 缺少替代文字",
     "whyZh": "內嵌物件沒有替代內容時，無法呈現該物件的裝置與報讀軟體得不到任何資訊。",
     "howZh": "為 <object> 提供內部替代內容或 aria-label。",
-    "twCheckCodes": [
-      "HM1110105C"
-    ]
+    "twCheckCodes": ["HM1110105C"]
   },
   {
     "axeRuleId": "role-img-alt",
@@ -147,9 +141,7 @@
     "titleZh": "標題階層順序錯亂",
     "whyZh": "標題跳階會破壞內容結構的理解，也讓使用標題導覽的使用者迷失方向。",
     "howZh": "依內容層級循序使用標題（h1、h2、h3⋯），不要跳階。",
-    "twCheckCodes": [
-      "HM1130100C"
-    ]
+    "twCheckCodes": ["HM1130100C"]
   },
   {
     "axeRuleId": "list",
@@ -210,9 +202,7 @@
     "titleZh": "儲存格的 headers 參照錯誤",
     "whyZh": "headers 指向不存在或表格外的 id 時，儲存格與表頭的關聯完全失效。",
     "howZh": "讓 headers 屬性只參照同一表格內實際存在的表頭 id。",
-    "twCheckCodes": [
-      "HM1130102C"
-    ]
+    "twCheckCodes": ["HM1130102C"]
   },
   {
     "axeRuleId": "th-has-data-cells",
@@ -393,9 +383,7 @@
     "titleZh": "網頁缺少標題",
     "whyZh": "沒有標題時，報讀軟體與瀏覽器分頁列都無法告知使用者目前所在的頁面。",
     "howZh": "在 <title> 中填入能清楚描述該頁內容的標題。",
-    "twCheckCodes": [
-      "HM1240200C"
-    ]
+    "twCheckCodes": ["HM1240200C"]
   },
   {
     "axeRuleId": "area-alt",
@@ -406,9 +394,7 @@
     "titleZh": "影像地圖區域缺少替代文字",
     "whyZh": "報讀軟體無法得知 <area> 連結區域的目的，視障使用者無從判斷點擊後會前往哪裡。",
     "howZh": "為每個 <area> 加上描述連結目的的 alt 屬性。",
-    "twCheckCodes": [
-      "HM1110101C"
-    ]
+    "twCheckCodes": ["HM1110101C"]
   },
   {
     "axeRuleId": "link-name",
@@ -419,9 +405,7 @@
     "titleZh": "連結沒有可辨識文字",
     "whyZh": "空連結或僅有圖示的連結，報讀軟體只念得出「連結」，使用者無從得知目的。",
     "howZh": "提供能描述連結目的的文字，或加上 aria-label。",
-    "twCheckCodes": [
-      "HM1240401C"
-    ]
+    "twCheckCodes": ["HM1240401C"]
   },
   {
     "axeRuleId": "focus-visible",
@@ -473,9 +457,7 @@
     "titleZh": "未標示網頁語言",
     "whyZh": "未設定 lang 屬性時，報讀軟體可能以錯誤的語音引擎朗讀內容。",
     "howZh": "在 <html lang=\"zh-Hant\"> 標示正確的網頁語言。",
-    "twCheckCodes": [
-      "HM1310100C"
-    ]
+    "twCheckCodes": ["HM1310100C"]
   },
   {
     "axeRuleId": "html-lang-valid",
@@ -486,9 +468,7 @@
     "titleZh": "網頁語言代碼無效",
     "whyZh": "無效的語言代碼等同沒有設定，報讀軟體可能以錯誤的語音朗讀整頁內容。",
     "howZh": "在 <html lang> 使用有效的 BCP 47 語言代碼（如 zh-Hant）。",
-    "twCheckCodes": [
-      "HM1310100C"
-    ]
+    "twCheckCodes": ["HM1310100C"]
   },
   {
     "axeRuleId": "html-xml-lang-mismatch",
@@ -509,9 +489,7 @@
     "titleZh": "局部語言標示無效",
     "whyZh": "段落標錯語言代碼時，報讀軟體會用錯誤的語音朗讀那段文字。",
     "howZh": "為部分內容標示語言時，使用有效的 BCP 47 語言代碼。",
-    "twCheckCodes": [
-      "HM2310200C"
-    ]
+    "twCheckCodes": ["HM2310200C"]
   },
   {
     "axeRuleId": "form-field-multiple-labels",
@@ -543,9 +521,7 @@
     "titleZh": "元素使用了不支援的 ARIA 屬性",
     "whyZh": "該角色不支援的 ARIA 屬性會被輔助科技忽略或誤解，導致狀態與資訊錯誤傳達。",
     "howZh": "移除該元素角色不支援的 ARIA 屬性，或改用正確的角色。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-braille-equivalent",
@@ -556,9 +532,7 @@
     "titleZh": "點字標籤缺少對應的一般名稱",
     "whyZh": "只提供 aria-braillelabel 而沒有一般無障礙名稱時，非點字裝置的使用者得不到任何資訊。",
     "howZh": "使用點字相關屬性時，必須同時提供對應的非點字無障礙名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-command-name",
@@ -569,9 +543,7 @@
     "titleZh": "ARIA 指令元素沒有無障礙名稱",
     "whyZh": "role 為 button、link、menuitem 的元素若無名稱，報讀軟體只能唸出角色，使用者不知其用途。",
     "howZh": "以內部文字、aria-label 或 aria-labelledby 提供名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-conditional-attr",
@@ -582,9 +554,7 @@
     "titleZh": "ARIA 屬性未依角色規定使用",
     "whyZh": "在角色不允許的情境使用 ARIA 屬性時，輔助科技會忽略或錯誤解讀該狀態。",
     "howZh": "依 ARIA 規範，只在該角色允許的條件下使用對應屬性。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-deprecated-role",
@@ -595,9 +565,7 @@
     "titleZh": "使用了已棄用的 ARIA 角色",
     "whyZh": "已棄用的角色在較新的輔助科技中可能不被支援，行為不可預期。",
     "howZh": "改用 ARIA 規範中的現行角色。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-hidden-focus",
@@ -608,9 +576,7 @@
     "titleZh": "aria-hidden 元素仍可被聚焦",
     "whyZh": "鍵盤焦點會落在報讀軟體「看不到」的元素上，使用者聽到一片沉默、無所適從。",
     "howZh": "讓 aria-hidden 的元素不可聚焦（移除 tabindex 等），或取消隱藏。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-input-field-name",
@@ -621,9 +587,7 @@
     "titleZh": "ARIA 輸入欄位沒有無障礙名稱",
     "whyZh": "自訂輸入元件（如 role=\"textbox\"）沒有名稱時，使用者不知道該欄位要輸入什麼。",
     "howZh": "以 aria-label 或 aria-labelledby 提供欄位名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-prohibited-attr",
@@ -634,9 +598,7 @@
     "titleZh": "元素使用了被禁止的 ARIA 屬性",
     "whyZh": "例如在純文字元素上使用 aria-label 會被輔助科技忽略，作者以為有提供資訊、實際上沒有。",
     "howZh": "移除該角色禁止的屬性，或改用允許該屬性的角色與元素。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-required-attr",
@@ -647,9 +609,7 @@
     "titleZh": "ARIA 缺少必要屬性",
     "whyZh": "ARIA 角色缺少必填屬性時，輔助科技會解讀錯誤或無法運作。",
     "howZh": "依規範補齊該 ARIA 角色所需的必要屬性。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-roles",
@@ -660,9 +620,7 @@
     "titleZh": "ARIA 角色值無效",
     "whyZh": "拼錯或不存在的 role 會被輔助科技忽略，元件的語意與行為全部失效。",
     "howZh": "使用 ARIA 規範定義的有效角色名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-toggle-field-name",
@@ -673,9 +631,7 @@
     "titleZh": "ARIA 切換元件沒有無障礙名稱",
     "whyZh": "自訂核取方塊、開關等元件沒有名稱時，使用者只聽得到狀態，不知道在切換什麼。",
     "howZh": "以 aria-label、aria-labelledby 或可見文字提供名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-tooltip-name",
@@ -686,9 +642,7 @@
     "titleZh": "工具提示沒有無障礙名稱",
     "whyZh": "role=\"tooltip\" 沒有內容時，輔助科技使用者得不到這個提示要傳達的資訊。",
     "howZh": "確保工具提示有文字內容或 aria-label。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-valid-attr",
@@ -699,9 +653,7 @@
     "titleZh": "ARIA 屬性名稱無效",
     "whyZh": "拼錯的 aria-* 屬性會被直接忽略，預期提供的輔助資訊完全沒有生效。",
     "howZh": "修正為 ARIA 規範中存在的屬性名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "aria-valid-attr-value",
@@ -712,9 +664,7 @@
     "titleZh": "ARIA 屬性值無效",
     "whyZh": "無效的 ARIA 屬性值會使輔助科技的行為不可預期。",
     "howZh": "依 ARIA 規範填入合法的屬性值。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "button-name",
@@ -725,9 +675,7 @@
     "titleZh": "按鈕沒有可辨識名稱",
     "whyZh": "沒有文字的按鈕，輔助科技使用者無法辨識其用途。",
     "howZh": "補上可見文字，或以 aria-label 提供名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "duplicate-id-aria",
@@ -738,9 +686,7 @@
     "titleZh": "ARIA 與標籤參照的 id 重複",
     "whyZh": "被 aria-labelledby、label for 等參照的 id 若重複，輔助科技會關聯到錯誤的元素，唸出錯誤的名稱或說明。",
     "howZh": "確保被 ARIA 屬性與 <label> 參照的每個 id 在頁面中唯一。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "frame-title",
@@ -751,9 +697,7 @@
     "titleZh": "iframe 缺少標題",
     "whyZh": "沒有標題的 iframe 讓輔助科技使用者不知道內嵌的內容是什麼。",
     "howZh": "為 iframe 加上 title 屬性描述其用途。",
-    "twCheckCodes": [
-      "HM1410201C"
-    ]
+    "twCheckCodes": ["HM1410201C"]
   },
   {
     "axeRuleId": "frame-title-unique",
@@ -764,9 +708,7 @@
     "titleZh": "多個 iframe 使用相同標題",
     "whyZh": "標題重複時，使用者無法分辨多個內嵌框架各自是什麼內容。",
     "howZh": "為每個 iframe 提供能彼此區分的獨特 title。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "input-button-name",
@@ -777,9 +719,7 @@
     "titleZh": "輸入型按鈕沒有可辨識文字",
     "whyZh": "<input type=\"button\"> 缺少 value 時按鈕沒有名稱，使用者不知道按下去會做什麼。",
     "howZh": "補上 value 文字或 aria-label。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "label",
@@ -790,9 +730,7 @@
     "titleZh": "表單欄位缺少標籤",
     "whyZh": "欄位沒有標籤時，使用輔助科技的使用者不知道該欄位要填什麼。",
     "howZh": "使用 <label for> 或 aria-label 將標籤與欄位明確關聯。",
-    "twCheckCodes": [
-      "HM1130104C"
-    ]
+    "twCheckCodes": ["HM1130104C"]
   },
   {
     "axeRuleId": "nested-interactive",
@@ -803,9 +741,7 @@
     "titleZh": "互動元件互相嵌套",
     "whyZh": "按鈕裡包按鈕這類結構會讓焦點與報讀行為錯亂，鍵盤操作不可預期。",
     "howZh": "拆開嵌套的互動元件，一個控制元件只負責一個動作。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "select-name",
@@ -816,9 +752,7 @@
     "titleZh": "下拉選單沒有無障礙名稱",
     "whyZh": "<select> 沒有標籤時，使用者不知道這個選單是在選擇什麼。",
     "howZh": "用 <label for> 或 aria-label 提供名稱。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   },
   {
     "axeRuleId": "summary-name",
@@ -829,8 +763,6 @@
     "titleZh": "<summary> 沒有可辨識文字",
     "whyZh": "摺疊區塊的開關沒有名稱時，使用者不知道展開後會是什麼內容。",
     "howZh": "在 <summary> 中提供描述性文字。",
-    "twCheckCodes": [
-      "HM1410200C"
-    ]
+    "twCheckCodes": ["HM1410200C"]
   }
 ]

@@ -40,13 +40,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ramp-nvda-ps-'));
 function ps(name, args = '') {
   try {
-    return cp.execSync(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${path.join(PS_DIR, name)}" ${args}`,
-      { encoding: 'utf8' }
-    ).trim();
-  } catch (e) { return 'ERR ' + (e.message || '').slice(0, 80); }
+    return cp
+      .execSync(
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "${path.join(PS_DIR, name)}" ${args}`,
+        { encoding: 'utf8' },
+      )
+      .trim();
+  } catch (e) {
+    return 'ERR ' + (e.message || '').slice(0, 80);
+  }
 }
-fs.writeFileSync(path.join(PS_DIR, 'focus-click.ps1'), `
+fs.writeFileSync(
+  path.join(PS_DIR, 'focus-click.ps1'),
+  `
 param([int]$ProcId)
 Add-Type @"
 using System;using System.Runtime.InteropServices;
@@ -78,8 +84,11 @@ $x=$r.L+180; $y=$r.T+150
 Start-Sleep -Milliseconds 150
 [WC]::mouse_event(0x2,0,0,0,[IntPtr]::Zero);[WC]::mouse_event(0x4,0,0,0,[IntPtr]::Zero)
 Write-Output ("foregrounded+clicked " + $x + "," + $y)
-`);
-fs.writeFileSync(path.join(PS_DIR, 'click-at.ps1'), `
+`,
+);
+fs.writeFileSync(
+  path.join(PS_DIR, 'click-at.ps1'),
+  `
 param([int]$ProcId,[int]$OffX,[int]$OffY)
 Add-Type @"
 using System;using System.Runtime.InteropServices;
@@ -99,7 +108,8 @@ $x=$r.L+$OffX; $y=$r.T+$OffY
 Start-Sleep -Milliseconds 120
 [CK]::mouse_event(0x2,0,0,0,[IntPtr]::Zero);[CK]::mouse_event(0x4,0,0,0,[IntPtr]::Zero)
 Write-Output ("clicked " + $x + "," + $y)
-`);
+`,
+);
 
 /** 關掉 guidepup NVDA 的語音檢視器（置頂視窗會攔截點擊） */
 function disableSpeechViewer() {
@@ -111,18 +121,29 @@ function disableSpeechViewer() {
     if (!fs.existsSync(ini)) return 'nvda.ini 不存在';
     const txt = fs.readFileSync(ini, 'utf8');
     if (/showSpeechViewerAtStartup = True/.test(txt)) {
-      fs.writeFileSync(ini, txt.replace('showSpeechViewerAtStartup = True', 'showSpeechViewerAtStartup = False'));
+      fs.writeFileSync(
+        ini,
+        txt.replace('showSpeechViewerAtStartup = True', 'showSpeechViewerAtStartup = False'),
+      );
       return '已關閉語音檢視器';
     }
     return '語音檢視器已是關閉';
-  } catch (e) { return 'ERR ' + e.message; }
+  } catch (e) {
+    return 'ERR ' + e.message;
+  }
 }
 
 /** 停點壓成一行 */
 function stopToLine(s) {
   if (s.kind === 'text') {
-    return [(s.text || ''), s.role !== '文字' ? '【' + s.role + '】' : '', s.position, s.description ? '（' + s.description + '）' : '']
-      .filter(Boolean).join(' ');
+    return [
+      s.text || '',
+      s.role !== '文字' ? '【' + s.role + '】' : '',
+      s.position,
+      s.description ? '（' + s.description + '）' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
   }
   const x = [s.name || (s.nameRequired ? '（無可朗讀名稱）' : ''), s.role];
   if (s.value) x.push(s.value);
@@ -136,14 +157,20 @@ function stopToLine(s) {
 (async () => {
   if (!CHROME) throw new Error('找不到 Chrome');
   console.log('語音檢視器：', disableSpeechViewer());
-  const server = http.createServer((req, res) => {
-    const p = path.join(REPO, 'test', req.url === '/' ? FIXTURE : req.url.replace(/^\//, ''));
-    fs.readFile(p, (e, d) => {
-      if (e) { res.writeHead(404); res.end(); return; }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(d);
-    });
-  }).listen(PORT);
+  const server = http
+    .createServer((req, res) => {
+      const p = path.join(REPO, 'test', req.url === '/' ? FIXTURE : req.url.replace(/^\//, ''));
+      fs.readFile(p, (e, d) => {
+        if (e) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(d);
+      });
+    })
+    .listen(PORT);
 
   // (A) 我們的模擬（headless）
   const bh = await puppeteer.launch({ executablePath: CHROME, headless: 'new', pipe: true });
@@ -155,13 +182,23 @@ function stopToLine(s) {
   const ro = await ph.evaluate(() => window.__rampA11yReadingOrder());
   await bh.close();
   const ourLines = ro.stops.map((s) =>
-    (s.kind === 'landmark' || s.kind === 'table' || s.kind === 'list') ? '〔' + s.text + '〕' : stopToLine(s));
+    s.kind === 'landmark' || s.kind === 'table' || s.kind === 'list'
+      ? '〔' + s.text + '〕'
+      : stopToLine(s),
+  );
 
   // (B) 真 NVDA
-  try { cp.execSync('taskkill /IM nvda.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
+  try {
+    cp.execSync('taskkill /IM nvda.exe /F', { stdio: 'ignore' });
+  } catch (e) {
+    /* 忽略 */
+  }
   await sleep(800);
   const b = await puppeteer.launch({
-    executablePath: CHROME, headless: false, pipe: true, defaultViewport: null,
+    executablePath: CHROME,
+    headless: false,
+    pipe: true,
+    defaultViewport: null,
     // 拿掉 --enable-automation：避免產生「受自動化軟體控制」資訊列——
     // 有螢幕報讀軟體時 Chrome 會把焦點移到該資訊列播報，搶走頁面焦點
     ignoreDefaultArgs: ['--enable-automation'],
@@ -172,7 +209,11 @@ function stopToLine(s) {
   console.log('NVDA 啟動中（Windows 可能彈出「設定」——會自動處理）…');
   await nvda.start();
   await sleep(2500);
-  try { cp.execSync('taskkill /IM SystemSettings.exe /F', { stdio: 'ignore' }); } catch (e) { /* 忽略 */ }
+  try {
+    cp.execSync('taskkill /IM SystemSettings.exe /F', { stdio: 'ignore' });
+  } catch (e) {
+    /* 忽略 */
+  }
   await sleep(600);
   // 焦點自癒：點進頁面 → 用「探測句」確認 NVDA 讀的是本頁（而非瀏覽器 UI／別的視窗），
   // 不像就重點擊再試（最多 4 次）。這是實測中最可靠的判準。
@@ -186,21 +227,24 @@ function stopToLine(s) {
     await sleep(800);
     await nvda.next();
     await sleep(700);
-    const first = (await nvda.lastSpokenPhrase() || '').trim();
+    const first = ((await nvda.lastSpokenPhrase()) || '').trim();
     console.log('  探測句：', first.slice(0, 50) || '（無）');
     if (first && !looksWrong(first)) ready = true;
   }
   // 瀏覽模式逐行走訪（真 NVDA 的線性化——與我們的朗讀順序直接對照）
   const phr = [];
   if (ready) {
-    const first = (await nvda.lastSpokenPhrase() || '').trim();
+    const first = ((await nvda.lastSpokenPhrase()) || '').trim();
     if (first) phr.push(first);
-    let same = 0, prev = null;
+    let same = 0,
+      prev = null;
     for (let i = 0; i < 40; i++) {
       await nvda.next();
       await sleep(600);
-      const p = (await nvda.lastSpokenPhrase() || '').trim();
-      if (p === prev) { if (++same >= 3) break; } else same = 0;
+      const p = ((await nvda.lastSpokenPhrase()) || '').trim();
+      if (p === prev) {
+        if (++same >= 3) break;
+      } else same = 0;
       prev = p;
       if (p && p !== phr[phr.length - 1]) phr.push(p);
     }
@@ -208,7 +252,11 @@ function stopToLine(s) {
   await nvda.stop();
   await b.close();
   server.close();
-  try { fs.rmSync(PS_DIR, { recursive: true, force: true }); } catch (e) { /* 忽略 */ }
+  try {
+    fs.rmSync(PS_DIR, { recursive: true, force: true });
+  } catch (e) {
+    /* 忽略 */
+  }
 
   console.log('\n頁面：' + FIXTURE);
   console.log('═'.repeat(80));
@@ -224,7 +272,13 @@ function stopToLine(s) {
     console.log('⚠ 本輪 NVDA 讀到的是瀏覽器 UI 而非頁面控制項（Windows 焦點時序不穩定），');
     console.log('  直接重跑一次通常即可；成功時會逐一念出「城市, 下拉式方塊, 台中」等頁面控制項。');
   }
-  fs.writeFileSync(path.join(__dirname, 'last-run.json'), JSON.stringify({ phrases: phr, ourLines }, null, 2));
+  fs.writeFileSync(
+    path.join(__dirname, 'last-run.json'),
+    JSON.stringify({ phrases: phr, ourLines }, null, 2),
+  );
   console.log('（原始輸出已存 test/nvda/last-run.json）');
   process.exit(0);
-})().catch((e) => { console.error('ERR:', e.message); process.exit(1); });
+})().catch((e) => {
+  console.error('ERR:', e.message);
+  process.exit(1);
+});

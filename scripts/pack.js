@@ -30,4 +30,6 @@ zip.writeZip(out);
 const size = (fs.statSync(out).size / 1024).toFixed(0);
 console.log(`已產生 ${out}（${size} KB）`);
 console.log('內容物：');
-new AdmZip(out).getEntries().forEach((e) => { if (!e.isDirectory) console.log('  ' + e.entryName); });
+new AdmZip(out).getEntries().forEach((e) => {
+  if (!e.isDirectory) console.log('  ' + e.entryName);
+});

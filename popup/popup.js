@@ -36,16 +36,16 @@ const readingSummaryEl = document.getElementById('reading-summary');
 
 // ===== 全域狀態 =====
 let rulesMap = new Map(); // axeRuleId → 對應表項目
-let currentTabId = null;  // 當前掃描的分頁 id
-let lastScan = null;      // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
+let currentTabId = null; // 當前掃描的分頁 id
+let lastScan = null; // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
 let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）| live（動態播報）
-let readingData = null;   // 朗讀順序資料快取（每次重新檢測時失效）
-let liveTimer = null;     // 動態播報輪詢計時器
+let readingData = null; // 朗讀順序資料快取（每次重新檢測時失效）
+let liveTimer = null; // 動態播報輪詢計時器
 
 // 使用者偏好（chrome.storage.local 持久化）
 const prefs = {
-  targetLevel: 'AA',   // 目標檢測等級（政府網站標章要求 AA）
-  scanDelay: 0,        // 掃描前等待秒數（動畫、延遲載入頁面用）
+  targetLevel: 'AA', // 目標檢測等級（政府網站標章要求 AA）
+  scanDelay: 0, // 掃描前等待秒數（動畫、延遲載入頁面用）
   resultFilter: 'all', // 結果篩選：all | violations | review
 };
 
@@ -64,9 +64,7 @@ const IMPACT_ZH = { critical: '嚴重', serious: '高', moderate: '中', minor: 
 
 /** 同組內依 axe impact 嚴重度排序（critical → minor，無 impact 排最後） */
 function sortByImpact(list) {
-  return list
-    .slice()
-    .sort((a, b) => (IMPACT_ORDER[a.impact] ?? 9) - (IMPACT_ORDER[b.impact] ?? 9));
+  return list.slice().sort((a, b) => (IMPACT_ORDER[a.impact] ?? 9) - (IMPACT_ORDER[b.impact] ?? 9));
 }
 
 /** 快取結果的時間顯示 */
@@ -108,8 +106,15 @@ function showError(title, detail, canRetry) {
 function isRestrictedUrl(url) {
   if (!url) return true;
   const restrictedSchemes = [
-    'chrome://', 'chrome-extension://', 'chrome-search://', 'chrome-devtools://',
-    'edge://', 'extension://', 'devtools://', 'about:', 'view-source:',
+    'chrome://',
+    'chrome-extension://',
+    'chrome-search://',
+    'chrome-devtools://',
+    'edge://',
+    'extension://',
+    'devtools://',
+    'about:',
+    'view-source:',
   ];
   if (restrictedSchemes.some((s) => url.startsWith(s))) return true;
   // 擴充功能商店頁面同樣禁止注入
@@ -147,14 +152,20 @@ async function loadPrefs() {
   try {
     const st = await chrome.storage.local.get('prefs');
     Object.assign(prefs, st.prefs || {});
-  } catch { /* 讀取失敗就用預設值 */ }
+  } catch {
+    /* 讀取失敗就用預設值 */
+  }
   levelSelect.value = prefs.targetLevel;
   delaySelect.value = String(prefs.scanDelay);
   syncFilterUI();
 }
 
 function savePrefs() {
-  try { chrome.storage.local.set({ prefs }); } catch { /* 忽略 */ }
+  try {
+    chrome.storage.local.set({ prefs });
+  } catch {
+    /* 忽略 */
+  }
 }
 
 /** 同步篩選 chips 的視覺與 aria 狀態 */
@@ -190,7 +201,7 @@ async function runScan() {
       showError(
         '此頁面無法檢測',
         '瀏覽器內建頁面（chrome:// 等）與擴充功能商店基於安全限制，無法注入檢測腳本。請切換到一般網頁再試。',
-        false
+        false,
       );
       return;
     }
@@ -207,11 +218,7 @@ async function runScan() {
     // （同一 isolated world 共用，axe 全域可被後續檔案取用）
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: [
-        'vendor/axe.min.js',
-        'vendor/axe-locale-zh_TW.js',
-        'content/scanner.js',
-      ],
+      files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
     });
 
     // 步驟二：執行掃描，取回序列化的純資料
@@ -245,7 +252,7 @@ async function runScan() {
       showError(
         '此頁面無法檢測',
         '瀏覽器不允許在此頁面注入檢測腳本（受保護頁面、錯誤頁或未授權的本機檔案）。請切換到一般網頁再試。',
-        false
+        false,
       );
     } else if (/already running/i.test(msg)) {
       showError('檢測仍在進行中', '上一次掃描尚未完成，請稍候幾秒再試一次。', true);
@@ -321,12 +328,18 @@ function renderStats(violations, bpCount, incompleteCount) {
     `<span class="stat"><span class="badge badge-AAA">AAA</span><strong>${levelCounts.AAA}</strong></span>`,
   ];
   if (unmapped > 0) {
-    parts.push(`<span class="stat"><span class="badge badge-unmapped">其他</span><strong>${unmapped}</strong></span>`);
+    parts.push(
+      `<span class="stat"><span class="badge badge-unmapped">其他</span><strong>${unmapped}</strong></span>`,
+    );
   }
   if (bpCount > 0) {
-    parts.push(`<span class="stat"><span class="badge badge-bp">建議</span><strong>${bpCount}</strong></span>`);
+    parts.push(
+      `<span class="stat"><span class="badge badge-bp">建議</span><strong>${bpCount}</strong></span>`,
+    );
   }
-  parts.push(`<span class="stat"><span class="badge badge-review">複核</span>需人工複核 <strong>${incompleteCount}</strong></span>`);
+  parts.push(
+    `<span class="stat"><span class="badge badge-review">複核</span>需人工複核 <strong>${incompleteCount}</strong></span>`,
+  );
   statsEl.innerHTML = parts.join('');
 }
 
@@ -349,14 +362,28 @@ function nvdaLineHtml(nvda) {
       ? `<span class="nvda-role nvda-role-en" title="NVDA 官方翻譯尚未收錄此角色，顯示原始 role">${escapeHtml(nvda.roleEn)}</span>`
       : '';
   const value = nvda.value ? `<span class="nvda-value">${escapeHtml(nvda.value)}</span>` : '';
-  const states = nvda.states && nvda.states.length
-    ? `<span class="nvda-states">${nvda.states.map(escapeHtml).join('　')}</span>`
+  const states =
+    nvda.states && nvda.states.length
+      ? `<span class="nvda-states">${nvda.states.map(escapeHtml).join('　')}</span>`
+      : '';
+  const position = nvda.position
+    ? `<span class="nvda-pos">${escapeHtml(nvda.position)}</span>`
     : '';
-  const position = nvda.position ? `<span class="nvda-pos">${escapeHtml(nvda.position)}</span>` : '';
-  const itemCount = nvda.itemCount ? `<span class="nvda-pos">${escapeHtml(nvda.itemCount)}</span>` : '';
-  const desc = nvda.description ? `<span class="nvda-desc">${escapeHtml(nvda.description)}</span>` : '';
-  const hasAny = nvda.name || nvda.role || nvda.roleEn || value || (nvda.states && nvda.states.length)
-    || position || itemCount || desc;
+  const itemCount = nvda.itemCount
+    ? `<span class="nvda-pos">${escapeHtml(nvda.itemCount)}</span>`
+    : '';
+  const desc = nvda.description
+    ? `<span class="nvda-desc">${escapeHtml(nvda.description)}</span>`
+    : '';
+  const hasAny =
+    nvda.name ||
+    nvda.role ||
+    nvda.roleEn ||
+    value ||
+    (nvda.states && nvda.states.length) ||
+    position ||
+    itemCount ||
+    desc;
   if (!hasAny) return ''; // 無任何可念資訊（如純文字節點）不顯示整行
   // 依 NVDA 朗讀次序：名稱 → 角色 → 值 → 狀態 → 位置 → 項目數 → 描述
   return `<p class="nvda-line" title="模擬 NVDA 螢幕報讀軟體會如何念出此元素（角色／狀態／值等用詞取自 NVDA 官方正體中文）">
@@ -379,16 +406,17 @@ function issueHtml(item, badgeClass, badgeText, isReview) {
           </button>
           ${nvdaLineHtml(n.nvda)}
           ${n.html ? `<code class="node-html">${escapeHtml(n.html.slice(0, 120))}${n.html.length > 120 ? '…' : ''}</code>` : ''}
-        </li>`
+        </li>`,
     )
     .join('');
 
   const impactText = item.impact
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
-  const codesText = item.checkCodes && item.checkCodes.length
-    ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
-    : '';
+  const codesText =
+    item.checkCodes && item.checkCodes.length
+      ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
+      : '';
   const guidelineHtml = item.mapped
     ? `<p class="guideline">台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}${codesText}</p>`
     : `<p class="guideline">${
@@ -399,15 +427,9 @@ function issueHtml(item, badgeClass, badgeText, isReview) {
             : '未對應台灣規範準則'
       }・axe 規則：${escapeHtml(item.axeId)}${impactText}</p>`;
 
-  const whyHtml = item.why
-    ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>`
-    : '';
-  const howHtml = item.how
-    ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>`
-    : '';
-  const noteHtml = item.note
-    ? `<p class="issue-note">※ ${escapeHtml(item.note)}</p>`
-    : '';
+  const whyHtml = item.why ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(item.why)}</p>` : '';
+  const howHtml = item.how ? `<p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>` : '';
+  const noteHtml = item.note ? `<p class="issue-note">※ ${escapeHtml(item.note)}</p>` : '';
   // 需人工複核項目提供自評選單（對應官方自我評量流程）
   const rv = reviewState[item.axeId] || '';
   const reviewHtml = isReview
@@ -575,7 +597,10 @@ async function highlightOnPage(selector) {
 /** 切換檢視模式的介面狀態（stats／工具列僅在檢測問題模式顯示） */
 function setModeUI(mode) {
   // 離開動態播報模式時停止輪詢（頁面端的監看仍持續累積）
-  if (mode !== 'live' && liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  if (mode !== 'live' && liveTimer) {
+    clearInterval(liveTimer);
+    liveTimer = null;
+  }
   currentMode = mode;
   modeTabs.querySelectorAll('.mode-tab').forEach((t) => {
     const on = t.dataset.mode === mode;
@@ -586,9 +611,9 @@ function setModeUI(mode) {
   statsEl.hidden = !issuesMode;
   toolbarEl.hidden = !issuesMode;
   if (!issuesMode) {
-    cacheNoteEl.hidden = true;       // 非檢測問題模式不顯示快取提示
+    cacheNoteEl.hidden = true; // 非檢測問題模式不顯示快取提示
   } else {
-    readingSummaryEl.hidden = true;  // 回到檢測問題模式時收起摘要列
+    readingSummaryEl.hidden = true; // 回到檢測問題模式時收起摘要列
   }
 }
 
@@ -637,16 +662,19 @@ function readingItemHtml(s) {
         ? '<span class="ro-noname">（無可朗讀名稱）</span>'
         : '';
     const value = s.value ? ` <span class="nvda-value">${escapeHtml(s.value)}</span>` : '';
-    const states = s.states && s.states.length
-      ? ` <span class="ro-states">${s.states.map(escapeHtml).join('　')}</span>`
-      : '';
+    const states =
+      s.states && s.states.length
+        ? ` <span class="ro-states">${s.states.map(escapeHtml).join('　')}</span>`
+        : '';
     const extra = [s.position, s.itemCount].filter(Boolean).map(escapeHtml).join('　');
     const extraHtml = extra ? ` <span class="nvda-pos">${extra}</span>` : '';
     body = `<span class="ro-body">${name}${value}${states}${extraHtml}</span>`;
   } else {
     // 文字停點（含表格儲存格的座標與欄/列標題）
     const pos = s.position ? ` <span class="nvda-pos">${escapeHtml(s.position)}</span>` : '';
-    const desc = s.description ? ` <span class="nvda-desc">${escapeHtml(s.description)}</span>` : '';
+    const desc = s.description
+      ? ` <span class="nvda-desc">${escapeHtml(s.description)}</span>`
+      : '';
     body = `<span class="ro-body ro-text">${escapeHtml(s.text || '')}${pos}${desc}</span>`;
   }
   const flag = s.flagged
@@ -669,8 +697,7 @@ function renderReadingList(data) {
     ? `・<span class="ro-flag-count">${data.flaggedCount} 個順序落差</span>`
     : '・順序與畫面一致';
   const truncText = data.truncated ? `・僅顯示前 ${data.total} 個` : '';
-  readingSummaryEl.innerHTML =
-    `螢幕報讀軟體（NVDA）會依此順序念出整頁　共 <strong>${data.total}</strong> 個朗讀停點 ${flagText} ${truncText}`;
+  readingSummaryEl.innerHTML = `螢幕報讀軟體（NVDA）會依此順序念出整頁　共 <strong>${data.total}</strong> 個朗讀停點 ${flagText} ${truncText}`;
   issuesEl.innerHTML = data.stops.length
     ? data.stops.map(readingItemHtml).join('')
     : '<p class="ro-empty">此頁沒有可線性化的朗讀內容。</p>';
@@ -680,7 +707,10 @@ function renderReadingList(data) {
 /** 切到朗讀順序模式（首次進入才抓資料，之後用快取） */
 async function enterReadingMode() {
   setModeUI('reading');
-  if (readingData) { renderReadingList(readingData); return; }
+  if (readingData) {
+    renderReadingList(readingData);
+    return;
+  }
   readingSummaryEl.hidden = true;
   issuesEl.innerHTML = '<p class="ro-loading">正在分析整頁朗讀順序…</p>';
   try {
@@ -712,7 +742,10 @@ async function highlightROonPage(roIndex) {
     let res = await execHighlightRO(roIndex);
     if (res === 'missing') {
       // 頁面曾重整：補注入掃描器並重建 data-ramp-ro 定位屬性後重試
-      await chrome.scripting.executeScript({ target: { tabId: currentTabId }, files: ['content/scanner.js'] });
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        files: ['content/scanner.js'],
+      });
       await chrome.scripting.executeScript({
         target: { tabId: currentTabId },
         func: () => window.__rampA11yReadingOrder && window.__rampA11yReadingOrder(),
@@ -729,9 +762,10 @@ async function highlightROonPage(roIndex) {
 
 /** 產生單一播報項目的 HTML */
 function liveItemHtml(e) {
-  const pol = e.politeness === 'assertive'
-    ? '<span class="live-pol assertive">立即播報</span>'
-    : '<span class="live-pol polite">依序播報</span>';
+  const pol =
+    e.politeness === 'assertive'
+      ? '<span class="live-pol assertive">立即播報</span>'
+      : '<span class="live-pol polite">依序播報</span>';
   const d = new Date(e.ts);
   const pad = (n) => String(n).padStart(2, '0');
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -750,10 +784,11 @@ function renderLiveList(data) {
   const log = (data && data.log) || [];
   readingSummaryEl.hidden = false;
   readingSummaryEl.innerHTML =
-    `監看即時區域中（aria-live／role=alert…）　已捕捉 <strong>${log.length}</strong> 則播報`
-    + `<button class="live-clear" type="button">清除</button>`;
+    `監看即時區域中（aria-live／role=alert…）　已捕捉 <strong>${log.length}</strong> 則播報` +
+    `<button class="live-clear" type="button">清除</button>`;
   if (!log.length) {
-    issuesEl.innerHTML = '<p class="ro-empty">監看中… 在頁面上觸發動態變化（送出表單看錯誤訊息、按下儲存看提示、即時搜尋…），NVDA 會自動播報的內容就會依序出現在這裡。</p>';
+    issuesEl.innerHTML =
+      '<p class="ro-empty">監看中… 在頁面上觸發動態變化（送出表單看錯誤訊息、按下儲存看提示、即時搜尋…），NVDA 會自動播報的內容就會依序出現在這裡。</p>';
     return;
   }
   issuesEl.innerHTML = log.slice().reverse().map(liveItemHtml).join('');
@@ -781,7 +816,10 @@ async function enterLiveMode() {
   readingSummaryEl.hidden = true;
   issuesEl.innerHTML = '<p class="ro-loading">開始監看即時區域…</p>';
   try {
-    await chrome.scripting.executeScript({ target: { tabId: currentTabId }, files: ['content/scanner.js'] });
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      files: ['content/scanner.js'],
+    });
     await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
       func: () => window.__rampA11yLiveStart && window.__rampA11yLiveStart(),
@@ -817,9 +855,10 @@ function reportIssueHtml(item, badgeText, isReview) {
   const impactText = item.impact
     ? `・影響程度：${IMPACT_ZH[item.impact] || escapeHtml(item.impact)}`
     : '';
-  const codesText = item.checkCodes && item.checkCodes.length
-    ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
-    : '';
+  const codesText =
+    item.checkCodes && item.checkCodes.length
+      ? `・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`
+      : '';
   const rv = reviewState[item.axeId] || '';
   const reviewText = isReview
     ? `<p><strong>人工複核自評：</strong>${rv === 'pass' ? '通過' : rv === 'fail' ? '不通過' : '未確認'}</p>`
@@ -829,11 +868,15 @@ function reportIssueHtml(item, badgeText, isReview) {
     : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
 
   const nodes = item.nodes
-    .map((n) => `<li><code>${escapeHtml(n.target)}</code>${reportNvdaHtml(n.nvda)}${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`)
+    .map(
+      (n) =>
+        `<li><code>${escapeHtml(n.target)}</code>${reportNvdaHtml(n.nvda)}${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`,
+    )
     .join('');
-  const more = item.nodeCount > item.nodes.length
-    ? `<p class="more">（共 ${item.nodeCount} 個受影響元素，僅列出前 ${item.nodes.length} 個）</p>`
-    : '';
+  const more =
+    item.nodeCount > item.nodes.length
+      ? `<p class="more">（共 ${item.nodeCount} 個受影響元素，僅列出前 ${item.nodes.length} 個）</p>`
+      : '';
 
   return `
   <section class="issue">
@@ -863,17 +906,25 @@ function buildReportHtml(scan) {
   LEVEL_ORDER.forEach((level) => {
     const group = sortByImpact(violations.filter((v) => v.mapped && v.level === level));
     if (group.length === 0) return;
-    body += `<h2>等級 ${level}（${group.length} 項）</h2>` + group.map((v) => reportIssueHtml(v, level)).join('');
+    body +=
+      `<h2>等級 ${level}（${group.length} 項）</h2>` +
+      group.map((v) => reportIssueHtml(v, level)).join('');
   });
   const unmapped = sortByImpact(violations.filter((v) => !v.mapped));
   if (unmapped.length) {
-    body += `<h2>其他 WCAG 項目（未對應台灣準則，${unmapped.length} 項）</h2>` + unmapped.map((v) => reportIssueHtml(v, '其他')).join('');
+    body +=
+      `<h2>其他 WCAG 項目（未對應台灣準則，${unmapped.length} 項）</h2>` +
+      unmapped.map((v) => reportIssueHtml(v, '其他')).join('');
   }
   if (bestPractice.length) {
-    body += `<h2>最佳實務建議（非規範必要，${bestPractice.length} 項）</h2>` + bestPractice.map((v) => reportIssueHtml(v, '建議')).join('');
+    body +=
+      `<h2>最佳實務建議（非規範必要，${bestPractice.length} 項）</h2>` +
+      bestPractice.map((v) => reportIssueHtml(v, '建議')).join('');
   }
   if (incomplete.length) {
-    body += `<h2>需人工複核（${incomplete.length} 項）</h2>` + incomplete.map((v) => reportIssueHtml(v, '複核', true)).join('');
+    body +=
+      `<h2>需人工複核（${incomplete.length} 項）</h2>` +
+      incomplete.map((v) => reportIssueHtml(v, '複核', true)).join('');
   }
   if (!violations.length && !incomplete.length) {
     body += '<p>未發現自動化可偵測的違規。自動化檢測僅涵蓋部分無障礙問題，仍需人工複核。</p>';
@@ -883,7 +934,9 @@ function buildReportHtml(scan) {
   let reviewSummary = '';
   if (incomplete.length) {
     const counts = { pass: 0, fail: 0, none: 0 };
-    incomplete.forEach((i) => { counts[reviewState[i.axeId] || 'none'] += 1; });
+    incomplete.forEach((i) => {
+      counts[reviewState[i.axeId] || 'none'] += 1;
+    });
     reviewSummary = `<p class="info">人工複核自評：通過 ${counts.pass} 項・不通過 ${counts.fail} 項・未確認 ${counts.none} 項（自評由檢測者自行填寫，僅供內部參考）</p>`;
   }
 
@@ -947,7 +1000,11 @@ function exportReport() {
   if (!lastScan) return;
   const html = buildReportHtml(lastScan);
   let host = '';
-  try { host = new URL(lastScan.url).hostname.replace(/[^\w.-]/g, ''); } catch { /* 保持空字串 */ }
+  try {
+    host = new URL(lastScan.url).hostname.replace(/[^\w.-]/g, '');
+  } catch {
+    /* 保持空字串 */
+  }
   const d = new Date(lastScan.ts);
   const pad = (n) => String(n).padStart(2, '0');
   const filename = `ramp-a11y-report-${host}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.html`;
@@ -1011,10 +1068,12 @@ modeTabs.addEventListener('click', (e) => {
 // 動態播報「清除」按鈕（摘要列為動態渲染，採事件代理）
 readingSummaryEl.addEventListener('click', (e) => {
   if (!e.target.closest('.live-clear') || currentTabId == null) return;
-  chrome.scripting.executeScript({
-    target: { tabId: currentTabId },
-    func: () => window.__rampA11yLiveClear && window.__rampA11yLiveClear(),
-  }).then(() => refreshLive());
+  chrome.scripting
+    .executeScript({
+      target: { tabId: currentTabId },
+      func: () => window.__rampA11yLiveClear && window.__rampA11yLiveClear(),
+    })
+    .then(() => refreshLive());
 });
 
 // 人工複核自評變更（事件代理，自評選單為動態渲染）
@@ -1024,7 +1083,11 @@ issuesEl.addEventListener('change', (e) => {
   const axeId = sel.dataset.axeId;
   if (sel.value) reviewState[axeId] = sel.value;
   else delete reviewState[axeId];
-  try { chrome.storage.local.set({ [reviewKey]: reviewState }); } catch { /* 忽略 */ }
+  try {
+    chrome.storage.local.set({ [reviewKey]: reviewState });
+  } catch {
+    /* 忽略 */
+  }
 });
 
 // popup 開啟時：
@@ -1039,7 +1102,7 @@ issuesEl.addEventListener('change', (e) => {
       showError(
         '此頁面無法檢測',
         '瀏覽器內建頁面（chrome:// 等）與擴充功能商店基於安全限制，無法注入檢測腳本。請切換到一般網頁再試。',
-        false
+        false,
       );
       return;
     }
@@ -1078,8 +1141,10 @@ issuesEl.addEventListener('click', async (e) => {
     if (ok) {
       roItem.classList.add('active');
     } else {
-      roItem.insertAdjacentHTML('afterend',
-        '<span class="node-hint">無法在頁面上定位（元素可能已變更，請重新檢測）</span>');
+      roItem.insertAdjacentHTML(
+        'afterend',
+        '<span class="node-hint">無法在頁面上定位（元素可能已變更，請重新檢測）</span>',
+      );
       setTimeout(() => {
         const hint = roItem.parentElement && roItem.parentElement.querySelector('.node-hint');
         if (hint) hint.remove();
@@ -1120,7 +1185,7 @@ issuesEl.addEventListener('click', async (e) => {
       // 元素可能位於 iframe / shadow DOM 或已從頁面移除
       nodeBtn.insertAdjacentHTML(
         'afterend',
-        '<span class="node-hint">無法在頁面上定位此元素（可能位於 iframe 或已變更）</span>'
+        '<span class="node-hint">無法在頁面上定位此元素（可能位於 iframe 或已變更）</span>',
       );
       setTimeout(() => {
         const hint = nodeBtn.parentElement.querySelector('.node-hint');

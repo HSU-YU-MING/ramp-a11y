@@ -6,13 +6,23 @@
   "scripts": {
     "test": "node test/e2e/run-e2e.js",
     "test:unit": "node test/unit/run-unit.js",
+    "test:self": "node test/self-audit/popup-a11y.js",
     "test:nvda": "node test/nvda/compare.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{js,json}\"",
+    "format:check": "prettier --check \"**/*.{js,json}\"",
     "pack": "node scripts/pack.js"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@guidepup/guidepup": "^0.28.1",
-    "adm-zip": "^0.5.18",
+    "adm-zip": "^0.6.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^9.1.2",
+    "globals": "^15.15.0",
     "jsdom": "^25.0.1",
+    "prettier": "^3.9.6",
     "puppeteer-core": "^24.0.0"
   }
 }

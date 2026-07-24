@@ -1,0 +1,6 @@
+node_modules
+dist
+vendor
+test/e2e/output
+package-lock.json
+*.md
