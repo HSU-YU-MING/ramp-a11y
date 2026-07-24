@@ -66,7 +66,11 @@ module.exports = [
         ...globals.webextensions,
       },
     },
-    rules: commonRules,
+    rules: {
+      ...commonRules,
+      // 中文 UI／報告文案在字串中會刻意使用全形空白（U+3000）作為分隔，非誤植
+      'no-irregular-whitespace': ['error', { skipTemplates: true, skipStrings: true }],
+    },
   },
 
   prettier,

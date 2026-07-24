@@ -69,7 +69,7 @@ const HELP = `ramp-scan — 全站爬掃 CLI
 輸出／執行
   --level <A|AA|AAA> 目標檢測等級（預設 AA）
   --out <dir>        報告輸出目錄（預設 ./ramp-report）
-  --format <json>    輸出格式（目前 json；html 待 M3）
+  --format <fmt>     輸出格式 json｜html｜both（預設 json）
   --chrome <path>    指定 Chrome（等同 CHROME_PATH）
   --timeout <ms>     單頁載入逾時（預設 60000）
   --quiet            只寫檔、不印摘要
@@ -345,7 +345,8 @@ async function scanList(browser, entries, opts, log) {
 function aggregate(pages) {
   const ok = pages.filter((p) => p.ok !== false);
   const byLevel = { A: 0, AA: 0, AAA: 0, unmapped: 0 };
-  const rules = new Map(); // axeId -> { title, guideline, level, pages, elements }
+  // axeId -> 完整規則資訊（第一次出現時保留）＋跨頁 pages/elements 累計，供 HTML 詳列一次
+  const rules = new Map();
   let affected = 0;
   let manualReview = 0;
   let bestPractice = 0;
@@ -354,17 +355,14 @@ function aggregate(pages) {
       if (v.mapped) byLevel[v.level] = (byLevel[v.level] || 0) + 1;
       else byLevel.unmapped += 1;
       affected += v.nodeCount;
-      const r = rules.get(v.axeId) || {
-        axeId: v.axeId,
-        title: v.title,
-        guideline: v.guideline,
-        level: v.level,
-        pages: 0,
-        elements: 0,
-      };
-      r.pages += 1;
-      r.elements += v.nodeCount;
-      rules.set(v.axeId, r);
+      const r = rules.get(v.axeId);
+      if (r) {
+        r.pages += 1;
+        r.elements += v.nodeCount;
+      } else {
+        const { nodeCount, ...rest } = v;
+        rules.set(v.axeId, { ...rest, pages: 1, elements: nodeCount });
+      }
     });
     manualReview += p.summary.needsManualReview;
     bestPractice += p.summary.bestPractice;
@@ -442,12 +440,196 @@ function printSiteSummary(site) {
   }
 }
 
+// ===== HTML 報告（沿用擴充套件匯出報告的視覺風格）=====
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+}
+
+const REPORT_CSS = `
+  body { font-family: "Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;
+         max-width: 960px; margin: 0 auto; padding: 24px; color: #1F2937; line-height: 1.7; }
+  header { border-bottom: 3px solid #0F766E; padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 22px; color: #0F766E; margin: 0 0 8px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #E5E7EB; }
+  .info, .meta, .more { color: #4B5563; font-size: 13px; }
+  table.stats { border-collapse: collapse; margin: 12px 0; width: 100%; }
+  table.stats th, table.stats td { border: 1px solid #E5E7EB; padding: 6px 12px; font-size: 14px; text-align: center; }
+  table.stats th { background: #F9FAFB; }
+  .issue { border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 16px; margin: 10px 0; page-break-inside: avoid; }
+  .issue h4 { font-size: 15px; margin: 0 0 4px; }
+  .badge { display: inline-block; background: #374151; color: #fff; border-radius: 999px;
+           font-size: 12px; padding: 1px 10px; margin-right: 8px; vertical-align: middle; }
+  .count { color: #B91C1C; font-size: 13px; }
+  .nodes { margin: 4px 0 0 20px; }
+  .nodes code { font-size: 12px; word-break: break-all; }
+  .nvda { font-size: 12px; color: #0F766E; margin: 4px 0; }
+  details { border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 14px; margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  ul.pagerules { margin: 6px 0 0 18px; font-size: 13px; }
+  .disclaimer { margin-top: 32px; padding: 12px 16px; background: #FEF9C3; border-radius: 8px;
+                font-size: 13px; color: #713F12; }
+`;
+
+function nvdaText(nvda) {
+  if (!nvda) return '';
+  const p = [];
+  if (nvda.name) p.push(nvda.name);
+  else if (nvda.nameRequired) p.push('（無可朗讀名稱）');
+  if (nvda.role) p.push(nvda.role);
+  else if (nvda.roleEn) p.push(nvda.roleEn);
+  if (nvda.value) p.push(nvda.value);
+  if (nvda.states && nvda.states.length) p.push(nvda.states.join('　'));
+  if (nvda.position) p.push(nvda.position);
+  if (nvda.itemCount) p.push(nvda.itemCount);
+  if (nvda.description) p.push('（' + nvda.description + '）');
+  return p.length ? `<p class="nvda">🔊 模擬 NVDA 朗讀：${escapeHtml(p.join('　'))}</p>` : '';
+}
+
+function ruleDetailHtml(r) {
+  const badge = r.mapped ? r.level : r.isBestPractice ? '建議' : '其他';
+  const meta = r.mapped
+    ? `台灣規範 ${escapeHtml(r.guideline)} ${escapeHtml(r.guidelineName || '')}（${escapeHtml(r.category)}）・等級 ${escapeHtml(r.level)}` +
+      (r.impact ? `・影響 ${escapeHtml(r.impact)}` : '') +
+      (r.checkCodes && r.checkCodes.length
+        ? `・檢測碼 ${r.checkCodes.map(escapeHtml).join('、')}`
+        : '')
+    : `${r.isBestPractice ? '最佳實務建議（非規範必要）' : r.isWcag22 ? 'WCAG 2.2 新增（台灣尚未採用）' : '未對應台灣準則'}・axe ${escapeHtml(r.axeId)}`;
+  const count = r.pages != null ? `${r.pages} 頁 / ${r.elements} 元素` : `×${r.elements}`;
+  const targets = (r.sampleTargets || [])
+    .map((t) => `<li><code>${escapeHtml(t)}</code></li>`)
+    .join('');
+  return `<section class="issue">
+    <h4><span class="badge">${escapeHtml(badge)}</span>${escapeHtml(r.title)} <span class="count">${count}</span></h4>
+    <p class="meta">${meta}</p>
+    ${r.why ? `<p><strong>為什麼是障礙：</strong>${escapeHtml(r.why)}</p>` : ''}
+    ${r.how ? `<p><strong>如何修正：</strong>${escapeHtml(r.how)}</p>` : ''}
+    ${r.note ? `<p class="more">※ ${escapeHtml(r.note)}</p>` : ''}
+    ${nvdaText(r.sampleNvda)}
+    ${targets ? `<p class="meta">代表元素：</p><ul class="nodes">${targets}</ul>` : ''}
+  </section>`;
+}
+
+function pageDetailHtml(p) {
+  if (p.ok === false) {
+    return `<details><summary>⚠ ${escapeHtml(p.url)} — 掃描失敗</summary><p class="meta">${escapeHtml(p.error || '')}</p></details>`;
+  }
+  const rules = p.violations.length
+    ? p.violations
+        .map(
+          (v) =>
+            `<li><span class="badge">${escapeHtml(v.mapped ? v.level : '其他')}</span>${escapeHtml(v.title)} <span class="count">×${v.nodeCount}</span></li>`,
+        )
+        .join('')
+    : '<li>（無自動化違規）</li>';
+  const lang = p.lang ? `　語言 ${escapeHtml(p.lang)}` : '';
+  return `<details>
+    <summary>${escapeHtml(p.finalUrl || p.url)} — 違規 ${p.summary.violations}・待複核 ${p.summary.needsManualReview}${lang}</summary>
+    <p class="meta">${escapeHtml(p.title || '')}</p>
+    <ul class="pagerules">${rules}</ul>
+  </details>`;
+}
+
+function docShell(title, headerHtml, bodyHtml) {
+  return `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>${REPORT_CSS}</style>
+</head>
+<body>
+${headerHtml}
+${bodyHtml}
+<div class="disclaimer">
+  <strong>限制聲明：</strong>自動化檢測僅能涵蓋約三到四成的無障礙問題，本報告不等同官方無障礙標章認證；
+  鍵盤操作動線、報讀軟體實際體驗、替代文字是否恰當等仍需人工複核。
+</div>
+</body>
+</html>`;
+}
+
+function reportHeader(title, lines) {
+  return `<header><h1>${escapeHtml(title)}</h1><p class="info">${lines.map(escapeHtml).join('<br>')}</p></header>`;
+}
+
+function buildSiteHtml(site) {
+  const a = site.siteSummary;
+  const time = new Date(site.scannedAt).toLocaleString('zh-TW');
+  const header = reportHeader('Ramp 全站無障礙檢測報告', [
+    `檢測來源：${site.source}`,
+    `檢測時間：${time}`,
+    `模式：${site.crawl.mode}・掃描 ${a.pagesScanned} 頁（失敗 ${site.crawl.pagesFailed}${site.crawl.truncated ? '，達上限截斷' : ''}）`,
+    `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core 4.10.3・目標等級 ${site.targetLevel}`,
+  ]);
+  const stats = `<table class="stats">
+    <tr><th>掃描頁數</th><th>有違規頁數</th><th>失敗規則(不重複)</th><th>受影響元素</th><th>A</th><th>AA</th><th>AAA</th><th>其他</th><th>需人工複核</th></tr>
+    <tr><td>${a.pagesScanned}</td><td>${a.pagesWithViolations}</td><td>${a.uniqueRulesFailing}</td><td>${a.totalAffectedElements}</td><td>${a.byLevel.A}</td><td>${a.byLevel.AA}</td><td>${a.byLevel.AAA}</td><td>${a.byLevel.unmapped}</td><td>${a.needsManualReviewTotal}</td></tr>
+  </table>`;
+  let langHtml = '';
+  if (site.byLanguage) {
+    const rows = Object.entries(site.byLanguage)
+      .map(
+        ([lang, g]) =>
+          `<tr><td>${escapeHtml(lang)}</td><td>${g.pagesScanned}</td><td>${g.uniqueRulesFailing}</td><td>${g.totalAffectedElements}</td><td>${g.needsManualReviewTotal}</td></tr>`,
+      )
+      .join('');
+    langHtml = `<h2>逐語言彙整</h2><table class="stats"><tr><th>語言</th><th>頁數</th><th>失敗規則</th><th>受影響元素</th><th>需人工複核</th></tr>${rows}</table>`;
+  }
+  const topRules = a.topRules.length
+    ? `<h2>最常見的障礙（依影響頁數，每項修正建議詳列一次）</h2>${a.topRules.map(ruleDetailHtml).join('')}`
+    : '<h2>最常見的障礙</h2><p>未發現自動化可偵測的違規。</p>';
+  const worst = a.worstPages.length
+    ? `<h2>問題最多的頁面</h2><table class="stats"><tr><th style="text-align:left">頁面</th><th>違規數</th></tr>${a.worstPages
+        .map(
+          (w) =>
+            `<tr><td style="text-align:left">${escapeHtml(w.url)}</td><td>${w.violations}</td></tr>`,
+        )
+        .join('')}</table>`
+    : '';
+  const perPage = `<h2>逐頁明細（${site.pages.length}）</h2>${site.pages.map(pageDetailHtml).join('')}`;
+  return docShell(
+    `Ramp 全站報告 — ${site.source}`,
+    header,
+    `${stats}${langHtml}${topRules}${worst}${perPage}`,
+  );
+}
+
+function buildPageHtml(out) {
+  const time = new Date(out.scannedAt).toLocaleString('zh-TW');
+  const s = out.summary;
+  const header = reportHeader('Ramp 無障礙檢測報告', [
+    `檢測網址：${out.finalUrl}`,
+    `檢測時間：${time}`,
+    `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core 4.10.3・目標等級 ${out.targetLevel}`,
+  ]);
+  const stats = `<table class="stats">
+    <tr><th>違規規則</th><th>受影響元素</th><th>A</th><th>AA</th><th>AAA</th><th>其他</th><th>最佳實務建議</th><th>需人工複核</th></tr>
+    <tr><td>${s.violations}</td><td>${s.affectedElements}</td><td>${s.byLevel.A}</td><td>${s.byLevel.AA}</td><td>${s.byLevel.AAA}</td><td>${s.byLevel.unmapped}</td><td>${s.bestPractice}</td><td>${s.needsManualReview}</td></tr>
+  </table>`;
+  const rulesHtml = out.violations.length
+    ? out.violations.map((v) => ruleDetailHtml({ ...v, elements: v.nodeCount })).join('')
+    : '<p>未發現自動化可偵測的違規。</p>';
+  return docShell(`Ramp 報告 — ${out.finalUrl}`, header, `${stats}<h2>違規明細</h2>${rulesHtml}`);
+}
+
 // ===== 輸出 =====
 function writeReport(outDir, baseName, report) {
   fs.mkdirSync(outDir, { recursive: true });
   const stamp = report.scannedAt.replace(/[:.]/g, '-');
   const outFile = path.join(outDir, `${baseName}-${stamp}.json`);
   fs.writeFileSync(outFile, JSON.stringify(report, null, 2));
+  return outFile;
+}
+
+function writeHtml(outDir, baseName, scannedAt, html) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const stamp = scannedAt.replace(/[:.]/g, '-');
+  const outFile = path.join(outDir, `${baseName}-${stamp}.html`);
+  fs.writeFileSync(outFile, html);
   return outFile;
 }
 function safeHost(url) {
@@ -466,10 +648,12 @@ async function main() {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
-  if (values.format !== 'json') {
-    console.error(`目前僅支援 --format json（html 待 M3）；收到：${values.format}`);
+  if (!['json', 'html', 'both'].includes(values.format)) {
+    console.error(`--format 需為 json｜html｜both；收到：${values.format}`);
     process.exit(1);
   }
+  const fmtJson = values.format === 'json' || values.format === 'both';
+  const fmtHtml = values.format === 'html' || values.format === 'both';
   const num = (v, name) => {
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0) {
@@ -512,9 +696,12 @@ async function main() {
         targetLevel: values.level,
         ...report,
       };
-      const outFile = writeReport(values.out, safeHost(out.finalUrl), out);
+      const base = safeHost(out.finalUrl);
+      const written = [];
+      if (fmtJson) written.push(writeReport(values.out, base, out));
+      if (fmtHtml) written.push(writeHtml(values.out, base, out.scannedAt, buildPageHtml(out)));
       if (!values.quiet) printPageSummary(out);
-      console.error(`\n報告已寫入 ${outFile}`);
+      console.error(`\n報告已寫入：\n  ${written.join('\n  ')}`);
       return;
     }
 
@@ -560,9 +747,11 @@ async function main() {
     if (!site.byLanguage) delete site.byLanguage;
 
     const base = mode === 'crawl' ? safeHost(source) + '-site' : 'urllist';
-    const outFile = writeReport(values.out, base, site);
+    const written = [];
+    if (fmtJson) written.push(writeReport(values.out, base, site));
+    if (fmtHtml) written.push(writeHtml(values.out, base, site.scannedAt, buildSiteHtml(site)));
     if (!values.quiet) printSiteSummary(site);
-    console.error(`\n報告已寫入 ${outFile}`);
+    console.error(`\n報告已寫入：\n  ${written.join('\n  ')}`);
   } finally {
     await browser.close();
   }

@@ -94,12 +94,14 @@ npx ramp-scan <start-url> [options]
 |---|---|---|
 | M1 | 單 URL CLI ＋ 參數 ＋ JSON 輸出 | ✅ 已完成 |
 | M2 | Frontier 爬蟲（BFS、去重、上限、同源、容錯）＋全站彙整 JSON ＋ `--url-list` PolyMigrate 橋接與逐語言報告 | ✅ 已完成 |
-| M3 | HTML 報告（復用擴充套件匯出版型渲染 site JSON） | ⬜ 待做 |
+| M3 | HTML 報告（復用擴充套件匯出版型渲染 site/page JSON） | ✅ 已完成 |
 | M4 | 抽共用模組（translateRule＋報告）、擴充套件改用、README、加測試 | ⬜ 待做 |
 
-> M2 一併完成了原列於 M3 的「彙整」（siteSummary＋topRules＋worstPages＋byLanguage JSON），
-> M3 僅餘 HTML 呈現。並行完成使用者選定的 PolyMigrate `--url-list` 橋接（相容 url_inventory.csv，
-> 有 lang 欄即輸出逐語言彙整）。並行度（--concurrency）仍為循序，留待日後。
+> M2 一併完成了原列於 M3 的「彙整」（siteSummary＋topRules＋worstPages＋byLanguage JSON）。
+> M3 加上 `--format json｜html｜both`：HTML 沿用擴充套件匯出報告的配色與 .issue/.badge/.stats
+> 樣式，全站版含執行摘要表、逐語言彙整表、最常見障礙（去重、每規則含修正建議與 NVDA 預覽
+> 詳列一次）、最糟頁面、逐頁 `<details>` 明細；單頁版沿用 M1 結構。並行度（--concurrency）
+> 仍為循序，留待日後。
 
 ## 9. 風險與因應
 
