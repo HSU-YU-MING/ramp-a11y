@@ -23,7 +23,7 @@ npx ramp-scan <start-url> [options]
   --sitemap           改從 sitemap.xml 取頁面清單（可選）
 
 執行
-  --concurrency <n>   同時掃描頁數（預設 3，禮貌）
+  --concurrency <n>   同時掃描頁數（預設 1＝循序，禮貌；提高可加速）
   --delay <ms>        每次請求間隔（預設 0）
   --chrome <path>     指定 Chrome（等同 CHROME_PATH）
 
@@ -100,8 +100,10 @@ npx ramp-scan <start-url> [options]
 > M2 一併完成了原列於 M3 的「彙整」（siteSummary＋topRules＋worstPages＋byLanguage JSON）。
 > M3 加上 `--format json｜html｜both`：HTML 沿用擴充套件匯出報告的配色與 .issue/.badge/.stats
 > 樣式，全站版含執行摘要表、逐語言彙整表、最常見障礙（去重、每規則含修正建議與 NVDA 預覽
-> 詳列一次）、最糟頁面、逐頁 `<details>` 明細；單頁版沿用 M1 結構。並行度（--concurrency）
-> 仍為循序，留待日後。
+> 詳列一次）、最糟頁面、逐頁 `<details>` 明細；單頁版沿用 M1 結構。
+>
+> **後續加入**：`--concurrency`（預設 1 循序、向後相容）——清單模式用可測的 `mapPool`（結果依序）；
+> 爬蟲模式用動態池（started/active 協調並行結束時機，精確封頂 maxPages）。提高並行加速但降低禮貌性。
 >
 > M4 把真正相同的核心抽成 [shared/report-core.js](../shared/report-core.js)（UMD，供瀏覽器
 > `<script>` 與 Node `require` 共用）：`resolveMapping`（規則→台灣準則對應）、`escapeHtml`、

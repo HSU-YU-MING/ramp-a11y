@@ -130,6 +130,24 @@ eq('targetSplit AAA → 超出恆為 0', cli.targetSplit(bl, 'AAA').beyond, 0);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 
-const fails = results.filter((r) => !r.ok).length;
-console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
-process.exit(fails ? 1 : 0);
+// mapPool（--concurrency 的並行池）：以假的 async 任務驗證順序保留與並行不超過上限，不需瀏覽器
+(async () => {
+  let activeNow = 0;
+  let peak = 0;
+  const items = Array.from({ length: 10 }, (_, i) => i);
+  const out = await cli.mapPool(items, 3, async (x) => {
+    activeNow += 1;
+    peak = Math.max(peak, activeNow);
+    await new Promise((r) => setTimeout(r, 5));
+    activeNow -= 1;
+    return x * 2;
+  });
+  eq('mapPool 結果依輸入順序', out.join(','), items.map((x) => x * 2).join(','));
+  eq('mapPool 並行峰值等於上限', peak, 3);
+  const single = await cli.mapPool([1, 2, 3], 1, async (x) => x + 1);
+  eq('mapPool 並行 1 = 循序', single.join(','), '2,3,4');
+
+  const fails = results.filter((r) => !r.ok).length;
+  console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
+  process.exit(fails ? 1 : 0);
+})();

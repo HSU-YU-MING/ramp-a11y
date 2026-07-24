@@ -213,18 +213,18 @@ npm run scan -- https://example.com --depth 2 --max-pages 50 --format html
 npm run scan -- --url-list url_inventory.csv --format html
 ```
 
-主要選項：`--depth`／`--max-pages`／`--delay`（禮貌間隔）／`--include`／`--exclude`／
-`--url-list`／`--level`／`--out`／`--format json｜html｜both`／`--chrome`／`--timeout`。
-輸出為結構化 JSON（可進 CI）與沿用擴充套件風格的自包含 HTML 報告（全站摘要＋最常見障礙＋
-逐頁明細）。
+主要選項：`--depth`／`--max-pages`／`--concurrency`（並行加速，預設 1 循序）／`--delay`
+（禮貌間隔）／`--include`／`--exclude`／`--url-list`／`--level`（分「目標內／超出目標」）／
+`--out`／`--format json｜html｜both`／`--chrome`／`--timeout`。輸出為結構化 JSON（可進 CI）
+與沿用擴充套件風格的自包含 HTML 報告（全站摘要＋逐語言＋最常見障礙＋逐頁明細）。
 
 **與 [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate) 的橋接**：`--url-list`
 相容 PolyMigrate 遷移工具產出的 `url_inventory.csv`；當清單帶 `lang` 欄時，額外輸出**逐語言**
 無障礙彙整，讓已遷移的多語站能對各語言版本分別檢視 a11y（例：中文版 vs 英文版各自的違規）。
 
-> **使用倫理**：爬掃會對目標網站送出實際請求。預設每頁間隔 250ms、循序單執行緒；掃描**自己
-> 或已獲授權的網站**，掃他人網站前請確認符合對方使用條款，並以 `--delay`／`--max-pages`
-> 控制負載，勿造成伺服器壓力。
+> **使用倫理**：爬掃會對目標網站送出實際請求。**預設循序、每頁間隔 250ms**；`--concurrency`
+> 提高並行雖能加速，但會提高對伺服器的瞬時負載。掃描**自己或已獲授權的網站**，掃他人網站
+> 前請確認符合對方使用條款，並以 `--delay`／`--concurrency`／`--max-pages` 控制負載，勿造成壓力。
 
 > 架構、範圍與里程碑見 [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md)。
 
@@ -289,7 +289,7 @@ npm run scan -- --url-list url_inventory.csv --format html
 - [x] **全站爬掃 CLI**：以獨立本機 CLI 實作（Node＋Puppeteer＋與擴充套件共用對應核心），
   不做進擴充套件（權限模型與架構考量見 commit 歷史）。三模式（單頁／同源 BFS／`--url-list`）、
   JSON＋HTML 報告、與 PolyMigrate 橋接的逐語言彙整均已完成——見上方〈全站爬掃 CLI〉章節
-  與[架構規劃](docs/fullsite-cli-plan.md)。後續可選：`--concurrency` 並行加速。
+  與[架構規劃](docs/fullsite-cli-plan.md)。`--concurrency` 並行加速亦已加入。
 
 ## 授權與致謝
 

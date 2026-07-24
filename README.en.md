@@ -71,7 +71,7 @@ It emits structured **JSON** (drop into CI) and a self-contained **HTML** report
 
 **Composes with [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate).** `--url-list` reads the `url_inventory.csv` produced by PolyMigrate (my i18n-first static-site migrator); when the list carries a `lang` column, Ramp additionally reports accessibility **per language** — so a migrated multilingual site can be audited for its Chinese and English versions separately (e.g. the zh page failing rules the en page doesn't). Two tools, one workflow: migrate the multilingual site, then audit each language's accessibility.
 
-> **Use responsibly:** crawling sends real requests. Default 250 ms spacing, single-threaded; scan sites you own or are authorized to test, and use `--delay` / `--max-pages` to bound load. Architecture and scope: [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md).
+> **Use responsibly:** crawling sends real requests. **Sequential by default, 250 ms spacing**; `--concurrency` speeds crawls up but raises instantaneous load on the server. Scan sites you own or are authorized to test, and bound load with `--delay` / `--concurrency` / `--max-pages`. Architecture and scope: [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md).
 
 ## Permissions
 

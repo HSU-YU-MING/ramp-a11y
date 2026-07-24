@@ -37,6 +37,22 @@ function withTimeout(promise, ms, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// 以最多 concurrency 個並行對 items 逐一套用 fn(item, index)，結果依輸入順序回傳。
+// 用於固定清單（scanList）；爬蟲的動態佇列另用內嵌的動態池。
+async function mapPool(items, concurrency, fn) {
+  const results = new Array(items.length);
+  const n = Math.max(1, Math.min(Math.floor(concurrency) || 1, items.length || 1));
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: n }, worker));
+  return results;
+}
+
 // ===== 參數解析 =====
 function parseCliArgs(argv) {
   const { values, positionals } = parseArgs({
@@ -45,6 +61,7 @@ function parseCliArgs(argv) {
     options: {
       depth: { type: 'string', default: '0' },
       'max-pages': { type: 'string', default: '50' },
+      concurrency: { type: 'string', default: '1' },
       delay: { type: 'string', default: '250' },
       include: { type: 'string' },
       exclude: { type: 'string' },
@@ -71,7 +88,8 @@ const HELP = `ramp-scan — 全站爬掃 CLI
 爬取
   --depth <n>        爬取深度（預設 0＝僅起始頁）
   --max-pages <n>    頁數上限（預設 50）
-  --delay <ms>       每頁間隔，禮貌用（預設 250；設 0 關閉）
+  --concurrency <n>  並行掃描頁數（預設 1＝循序；提高可加速，但降低禮貌性）
+  --delay <ms>       每次請求前間隔，禮貌用（預設 250；設 0 關閉）
   --include <regex>  只爬/掃符合的 URL
   --exclude <regex>  跳過符合的 URL
   --url-list <file>  改掃清單中的 URL（.txt 每行一個，或 PolyMigrate url_inventory.csv）
@@ -249,39 +267,54 @@ async function visitPage(browser, url, opts) {
 async function crawlSite(browser, startUrl, opts, log) {
   const startHost = hostOf(startUrl);
   const pass = makeFilter(opts.include, opts.exclude);
-  const seen = new Set();
   const start = normalizeUrl(startUrl);
-  const enqueued = new Set([start]); // 已排入佇列（含未取出者），O(1) 去重
+  const enqueued = new Set([start]); // 已排入佇列（含未取出者），保證每個 URL 只訪問一次
   const queue = [{ url: start, depth: 0 }];
   const pages = [];
   let failed = 0;
+  let started = 0; // 已「開始訪問」的頁數 → 精確封頂在 maxPages（並行下也不超額）
+  let active = 0; // 進行中的訪問數 → 判斷佇列暫空時是否還會有新連結進來
 
-  while (queue.length && pages.length < opts.maxPages) {
-    const { url, depth } = queue.shift();
-    if (seen.has(url)) continue;
-    seen.add(url);
-    if (pages.length > 0 && opts.delay) await sleep(opts.delay);
-
-    try {
-      const { report, links } = await visitPage(browser, url, opts);
-      report.depth = depth;
-      report.ok = true;
-      pages.push(report);
-      log(`[${pages.length}] ${url} — 違規 ${report.summary.violations}`);
-      if (depth < opts.depth) {
-        for (const raw of links) {
-          const n = normalizeUrl(raw);
-          if (enqueued.has(n) || hostOf(n) !== startHost || isAsset(n) || !pass(n)) continue;
-          enqueued.add(n);
-          queue.push({ url: n, depth: depth + 1 });
-        }
+  async function worker() {
+    // 佇列動態成長（訪問中才發現新連結），故用 started/active 協調並行結束時機
+    while (true) {
+      if (started >= opts.maxPages) return;
+      const item = queue.shift();
+      if (!item) {
+        if (active === 0) return; // 佇列空且無人在跑 → 不會再有新工作
+        await sleep(15); // 佇列暫空但有人在跑，可能補入連結 → 稍候再試
+        continue;
       }
-    } catch (e) {
-      pages.push({ url, depth, ok: false, error: e.message });
-      failed += 1;
-      log(`[x] ${url} — ${e.message}`);
+      started += 1;
+      active += 1;
+      const { url, depth } = item;
+      try {
+        if (opts.delay) await sleep(opts.delay);
+        const { report, links } = await visitPage(browser, url, opts);
+        report.depth = depth;
+        report.ok = true;
+        pages.push(report);
+        log(`[${pages.length}] ${url} — 違規 ${report.summary.violations}`);
+        if (depth < opts.depth) {
+          for (const raw of links) {
+            const n = normalizeUrl(raw);
+            if (enqueued.has(n) || hostOf(n) !== startHost || isAsset(n) || !pass(n)) continue;
+            enqueued.add(n);
+            queue.push({ url: n, depth: depth + 1 });
+          }
+        }
+      } catch (e) {
+        pages.push({ url, depth, ok: false, error: e.message });
+        failed += 1;
+        log(`[x] ${url} — ${e.message}`);
+      } finally {
+        active -= 1;
+      }
     }
   }
+
+  const n = Math.max(1, Math.floor(opts.concurrency) || 1);
+  await Promise.all(Array.from({ length: n }, worker));
   return { pages, failed, truncated: queue.length > 0 };
 }
 
@@ -316,25 +349,26 @@ function parseUrlList(file) {
 
 async function scanList(browser, entries, opts, log) {
   const pass = makeFilter(opts.include, opts.exclude);
-  const pages = [];
-  let failed = 0;
   const targets = entries.filter((e) => pass(e.url)).slice(0, opts.maxPages);
-  for (const { url, lang } of targets) {
-    if (pages.length > 0 && opts.delay) await sleep(opts.delay);
+  let failed = 0;
+  let done = 0;
+  // 固定清單 → 直接用 mapPool 並行；結果依清單順序回傳（可重現）
+  const pages = await mapPool(targets, opts.concurrency, async ({ url, lang }) => {
+    if (opts.delay) await sleep(opts.delay);
     try {
       const { report } = await visitPage(browser, normalizeUrl(url), opts);
       report.lang = lang || undefined;
       report.ok = true;
-      pages.push(report);
       log(
-        `[${pages.length}/${targets.length}]${lang ? ` (${lang})` : ''} ${url} — 違規 ${report.summary.violations}`,
+        `[${++done}/${targets.length}]${lang ? ` (${lang})` : ''} ${url} — 違規 ${report.summary.violations}`,
       );
+      return report;
     } catch (e) {
-      pages.push({ url, lang: lang || undefined, ok: false, error: e.message });
       failed += 1;
       log(`[x] ${url} — ${e.message}`);
+      return { url, lang: lang || undefined, ok: false, error: e.message };
     }
-  }
+  });
   return { pages, failed, truncated: entries.length > targets.length };
 }
 
@@ -679,6 +713,7 @@ async function main() {
   const opts = {
     depth: Math.floor(num(values.depth, 'depth')),
     maxPages: Math.max(1, Math.floor(num(values['max-pages'], 'max-pages'))),
+    concurrency: Math.max(1, Math.floor(num(values.concurrency, 'concurrency'))),
     delay: num(values.delay, 'delay'),
     include: values.include,
     exclude: values.exclude,
@@ -731,12 +766,14 @@ async function main() {
         console.error(`--url-list 未解析出任何 URL：${urlList}`);
         process.exit(1);
       }
-      log(`從清單掃描 ${Math.min(entries.length, opts.maxPages)} 個 URL（來源 ${urlList}）…`);
+      log(
+        `從清單掃描 ${Math.min(entries.length, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
+      );
       result = await scanList(browser, entries, opts, log);
     } else {
       mode = 'crawl';
       source = url;
-      log(`自 ${url} 爬取（深度 ${opts.depth}、上限 ${opts.maxPages}）…`);
+      log(`自 ${url} 爬取（深度 ${opts.depth}、上限 ${opts.maxPages}、並行 ${opts.concurrency}）…`);
       result = await crawlSite(browser, url, opts, log);
     }
 
@@ -788,6 +825,7 @@ module.exports = {
   parseUrlList,
   aggregate,
   targetSplit,
+  mapPool,
   buildSiteHtml,
   buildPageHtml,
 };
