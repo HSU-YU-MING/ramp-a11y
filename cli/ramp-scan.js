@@ -15,7 +15,7 @@
  * （欄位 source_url,lang,…）。當清單帶 lang 欄時，額外輸出「逐語言」a11y 彙整，
  * 讓已用 PolyMigrate 遷移過的多語站，能對中/英各語言版本分別檢視無障礙狀況。
  *
- * 注意：translateRule 目前與 popup.js 各持一份，M4 會抽成共用純函式模組以防漂移。
+ * 規則→台灣準則對應核心與 popup 共用 shared/report-core.js（resolveMapping），不各持一份。
  */
 'use strict';
 
@@ -28,6 +28,15 @@ const { escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core
 const REPO = path.resolve(__dirname, '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// page.evaluate 沒有 Puppeteer 逾時；掃描/腳本卡住會拖死整個爬蟲，故自行加逾時。
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} 逾時（${ms}ms）`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ===== 參數解析 =====
 function parseCliArgs(argv) {
   const { values, positionals } = parseArgs({
@@ -36,7 +45,7 @@ function parseCliArgs(argv) {
     options: {
       depth: { type: 'string', default: '0' },
       'max-pages': { type: 'string', default: '50' },
-      delay: { type: 'string', default: '0' },
+      delay: { type: 'string', default: '250' },
       include: { type: 'string' },
       exclude: { type: 'string' },
       'url-list': { type: 'string' },
@@ -62,7 +71,7 @@ const HELP = `ramp-scan — 全站爬掃 CLI
 爬取
   --depth <n>        爬取深度（預設 0＝僅起始頁）
   --max-pages <n>    頁數上限（預設 50）
-  --delay <ms>       每頁間隔，禮貌用（預設 0）
+  --delay <ms>       每頁間隔，禮貌用（預設 250；設 0 關閉）
   --include <regex>  只爬/掃符合的 URL
   --exclude <regex>  跳過符合的 URL
   --url-list <file>  改掃清單中的 URL（.txt 每行一個，或 PolyMigrate url_inventory.csv）
@@ -105,15 +114,15 @@ function normalizeUrl(raw) {
     return raw;
   }
   u.hash = '';
+  // 先正規化 pathname 的尾斜線（含有 query 的網址也才能正確去重）
+  if (u.pathname !== '/' && u.pathname.endsWith('/')) u.pathname = u.pathname.slice(0, -1);
   if (u.search) {
     const kept = [...u.searchParams.entries()].filter(
       ([k, v]) => !TRACKING_PREFIXES.some((p) => `${k}=${v}`.toLowerCase().startsWith(p)),
     );
     u.search = new URLSearchParams(kept).toString();
   }
-  let s = u.toString();
-  if (s.endsWith('/') && u.pathname !== '/') s = s.slice(0, -1);
-  return s;
+  return u.toString();
 }
 
 const ASSET_EXT = [
@@ -159,7 +168,7 @@ function makeFilter(includeRe, excludeRe) {
   return (url) => (!inc || inc.test(url)) && !(exc && exc.test(url));
 }
 
-// ===== rules-map 轉譯（與 popup.js translateRule 對齊；M4 將抽共用模組）=====
+// ===== rules-map 轉譯（對應核心 resolveMapping 來自共用 shared/report-core.js）=====
 const rulesList = JSON.parse(fs.readFileSync(path.join(REPO, 'data/rules-map.json'), 'utf8'));
 const rulesMap = new Map(
   (Array.isArray(rulesList) ? rulesList : Object.values(rulesList)).map((r) => [r.axeRuleId, r]),
@@ -220,9 +229,15 @@ async function visitPage(browser, url, opts) {
     for (const f of INJECT) {
       await page.addScriptTag({ content: fs.readFileSync(path.join(REPO, f), 'utf8') });
     }
-    const scan = await page.evaluate(async () => await window.__rampA11yScan());
-    const links = await page.evaluate(() =>
-      [...document.querySelectorAll('a[href]')].map((a) => a.href),
+    const scan = await withTimeout(
+      page.evaluate(async () => await window.__rampA11yScan()),
+      opts.timeout,
+      '掃描',
+    );
+    const links = await withTimeout(
+      page.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => a.href)),
+      opts.timeout,
+      '連結蒐集',
     );
     return { report: buildPageReport(url, page.url(), title, scan), links };
   } finally {
@@ -235,7 +250,9 @@ async function crawlSite(browser, startUrl, opts, log) {
   const startHost = hostOf(startUrl);
   const pass = makeFilter(opts.include, opts.exclude);
   const seen = new Set();
-  const queue = [{ url: normalizeUrl(startUrl), depth: 0 }];
+  const start = normalizeUrl(startUrl);
+  const enqueued = new Set([start]); // 已排入佇列（含未取出者），O(1) 去重
+  const queue = [{ url: start, depth: 0 }];
   const pages = [];
   let failed = 0;
 
@@ -254,8 +271,9 @@ async function crawlSite(browser, startUrl, opts, log) {
       if (depth < opts.depth) {
         for (const raw of links) {
           const n = normalizeUrl(raw);
-          if (seen.has(n) || hostOf(n) !== startHost || isAsset(n) || !pass(n)) continue;
-          if (!queue.some((q) => q.url === n)) queue.push({ url: n, depth: depth + 1 });
+          if (enqueued.has(n) || hostOf(n) !== startHost || isAsset(n) || !pass(n)) continue;
+          enqueued.add(n);
+          queue.push({ url: n, depth: depth + 1 });
         }
       }
     } catch (e) {
@@ -277,15 +295,23 @@ function parseUrlList(file) {
   if (!looksCsv) {
     return lines.filter((l) => !l.startsWith('#')).map((l) => ({ url: l.trim(), lang: '' }));
   }
-  // CSV：取 source_url（欄 0）與 lang（欄 1）；URL 與語言別不含逗號，簡單切分即可
-  const header = lines[0].toLowerCase().split(',');
+  // CSV：取 source_url 與 lang 欄。每格先 trim 並去除包住的雙引號——真實盤點常見
+  // 「source_url, lang」逗號後帶空白，若不 trim 會使 lang 欄對不到而讓逐語言功能靜默失效。
+  const cell = (s) =>
+    s == null
+      ? ''
+      : s
+          .trim()
+          .replace(/^"(.*)"$/, '$1')
+          .trim();
+  const header = lines[0].split(',').map((h) => cell(h).toLowerCase());
   const urlIdx = Math.max(0, header.indexOf('source_url'));
   const langIdx = header.indexOf('lang');
   return lines
     .slice(1)
-    .map((l) => l.split(','))
-    .filter((c) => c[urlIdx] && /^https?:\/\//i.test(c[urlIdx]))
-    .map((c) => ({ url: c[urlIdx].trim(), lang: langIdx >= 0 ? (c[langIdx] || '').trim() : '' }));
+    .map((l) => l.split(',').map(cell))
+    .filter((c) => /^https?:\/\//i.test(c[urlIdx] || ''))
+    .map((c) => ({ url: c[urlIdx], lang: langIdx >= 0 ? c[langIdx] || '' : '' }));
 }
 
 async function scanList(browser, entries, opts, log) {
@@ -312,6 +338,20 @@ async function scanList(browser, entries, opts, log) {
   return { pages, failed, truncated: entries.length > targets.length };
 }
 
+// ===== 目標等級 =====
+const LEVEL_ORDER = ['A', 'AA', 'AAA'];
+// 依目標等級把 byLevel 拆成「目標內／超出目標」——不隱藏任何違規，只分組（與 popup 語意一致）
+function targetSplit(byLevel, targetLevel) {
+  const ti = LEVEL_ORDER.indexOf(targetLevel);
+  let within = 0;
+  let beyond = 0;
+  LEVEL_ORDER.forEach((lv, i) => {
+    if (i <= ti) within += byLevel[lv] || 0;
+    else beyond += byLevel[lv] || 0;
+  });
+  return { within, beyond };
+}
+
 // ===== 彙整 =====
 function aggregate(pages) {
   const ok = pages.filter((p) => p.ok !== false);
@@ -323,8 +363,6 @@ function aggregate(pages) {
   let bestPractice = 0;
   ok.forEach((p) => {
     p.violations.forEach((v) => {
-      if (v.mapped) byLevel[v.level] = (byLevel[v.level] || 0) + 1;
-      else byLevel.unmapped += 1;
       affected += v.nodeCount;
       const r = rules.get(v.axeId);
       if (r) {
@@ -338,6 +376,11 @@ function aggregate(pages) {
     manualReview += p.summary.needsManualReview;
     bestPractice += p.summary.bestPractice;
   });
+  // byLevel 依「不重複規則」計（跨頁同一規則只算一次），與 uniqueRulesFailing 一致
+  for (const r of rules.values()) {
+    if (r.mapped) byLevel[r.level] = (byLevel[r.level] || 0) + 1;
+    else byLevel.unmapped += 1;
+  }
   const topRules = [...rules.values()].sort((a, b) => b.pages - a.pages || b.elements - a.elements);
   const worstPages = ok
     .map((p) => ({ url: p.finalUrl || p.url, violations: p.summary.violations }))
@@ -377,6 +420,8 @@ function printPageSummary(report) {
     `    依等級      A ${s.byLevel.A} · AA ${s.byLevel.AA} · AAA ${s.byLevel.AAA}` +
       (s.byLevel.unmapped ? ` · 其他 ${s.byLevel.unmapped}` : ''),
   );
+  const tsp = targetSplit(s.byLevel, report.targetLevel);
+  console.log(`    目標 ${report.targetLevel}     目標內 ${tsp.within} · 超出目標 ${tsp.beyond}`);
   console.log(`  最佳實務建議  ${s.bestPractice}`);
   console.log(`  需人工複核    ${s.needsManualReview}`);
 }
@@ -392,6 +437,8 @@ function printSiteSummary(site) {
     `    依等級      A ${a.byLevel.A} · AA ${a.byLevel.AA} · AAA ${a.byLevel.AAA}` +
       (a.byLevel.unmapped ? ` · 其他 ${a.byLevel.unmapped}` : ''),
   );
+  const tsp = targetSplit(a.byLevel, site.targetLevel);
+  console.log(`    目標 ${site.targetLevel}     目標內 ${tsp.within} · 超出目標 ${tsp.beyond}`);
   console.log(`  需人工複核    ${a.needsManualReviewTotal}`);
   if (a.topRules.length) {
     console.log('\n  最常見的障礙：');
@@ -515,11 +562,13 @@ function reportHeader(title, lines) {
 function buildSiteHtml(site) {
   const a = site.siteSummary;
   const time = new Date(site.scannedAt).toLocaleString('zh-TW');
+  const tsp = targetSplit(a.byLevel, site.targetLevel);
   const header = reportHeader('Ramp 全站無障礙檢測報告', [
     `檢測來源：${site.source}`,
     `檢測時間：${time}`,
     `模式：${site.crawl.mode}・掃描 ${a.pagesScanned} 頁（失敗 ${site.crawl.pagesFailed}${site.crawl.truncated ? '，達上限截斷' : ''}）`,
-    `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core 4.10.3・目標等級 ${site.targetLevel}`,
+    `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core 4.10.3`,
+    `目標等級 ${site.targetLevel}：目標內 ${tsp.within} 種規則・超出目標 ${tsp.beyond} 種（報告仍列出全部）`,
   ]);
   const stats = `<table class="stats">
     <tr><th>掃描頁數</th><th>有違規頁數</th><th>失敗規則(不重複)</th><th>受影響元素</th><th>A</th><th>AA</th><th>AAA</th><th>其他</th><th>需人工複核</th></tr>
@@ -557,10 +606,12 @@ function buildSiteHtml(site) {
 function buildPageHtml(out) {
   const time = new Date(out.scannedAt).toLocaleString('zh-TW');
   const s = out.summary;
+  const tsp = targetSplit(s.byLevel, out.targetLevel);
   const header = reportHeader('Ramp 無障礙檢測報告', [
     `檢測網址：${out.finalUrl}`,
     `檢測時間：${time}`,
-    `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core 4.10.3・目標等級 ${out.targetLevel}`,
+    `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core 4.10.3`,
+    `目標等級 ${out.targetLevel}：目標內 ${tsp.within} 項・超出目標 ${tsp.beyond} 項（報告仍列出全部）`,
   ]);
   const stats = `<table class="stats">
     <tr><th>違規規則</th><th>受影響元素</th><th>A</th><th>AA</th><th>AAA</th><th>其他</th><th>最佳實務建議</th><th>需人工複核</th></tr>
@@ -608,6 +659,13 @@ async function main() {
     console.error(`--format 需為 json｜html｜both；收到：${values.format}`);
     process.exit(1);
   }
+  if (!LEVEL_ORDER.includes(values.level)) {
+    console.error(`--level 需為 A｜AA｜AAA；收到：${values.level}`);
+    process.exit(1);
+  }
+  if (urlList && url) {
+    console.error(`提醒：已指定 --url-list，位置參數網址 ${url} 將被忽略`);
+  }
   const fmtJson = values.format === 'json' || values.format === 'both';
   const fmtHtml = values.format === 'html' || values.format === 'both';
   const num = (v, name) => {
@@ -619,8 +677,8 @@ async function main() {
     return n;
   };
   const opts = {
-    depth: num(values.depth, 'depth'),
-    maxPages: Math.max(1, num(values['max-pages'], 'max-pages')),
+    depth: Math.floor(num(values.depth, 'depth')),
+    maxPages: Math.max(1, Math.floor(num(values['max-pages'], 'max-pages'))),
     delay: num(values.delay, 'delay'),
     include: values.include,
     exclude: values.exclude,
@@ -633,7 +691,7 @@ async function main() {
 
   const browser = await puppeteer.launch({
     executablePath: findChrome(opts.chrome),
-    headless: 'new',
+    headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
 

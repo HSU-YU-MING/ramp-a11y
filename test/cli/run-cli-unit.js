@@ -35,6 +35,11 @@ eq(
   cli.normalizeUrl('https://x.com/a?utm_source=fb&id=3'),
   'https://x.com/a?id=3',
 );
+eq(
+  'normalizeUrl 尾斜線＋query 也去重',
+  cli.normalizeUrl('https://x.com/a/?b=1'),
+  'https://x.com/a?b=1',
+);
 
 // ===== isAsset =====
 check('isAsset pdf', cli.isAsset('https://x.com/a.pdf') === true);
@@ -50,6 +55,13 @@ const parsed = cli.parseUrlList(csv);
 eq('parseUrlList CSV 筆數', parsed.length, 2);
 eq('parseUrlList CSV 取 source_url', parsed[0].url, 'https://x.com/ch/a');
 eq('parseUrlList CSV 取 lang', parsed[1].lang, 'en');
+
+// CSV 表頭有空白（source_url, lang）也要能對到 lang 欄（否則逐語言功能靜默失效）
+const csvSp = path.join(tmp, 'spaced.csv');
+fs.writeFileSync(csvSp, 'source_url, lang, section\nhttps://x.com/ch/a, ch, \n');
+const parsedSp = cli.parseUrlList(csvSp);
+eq('parseUrlList CSV 表頭空白仍取到 lang', parsedSp[0].lang, 'ch');
+eq('parseUrlList CSV 表頭空白仍取到 url', parsedSp[0].url, 'https://x.com/ch/a');
 
 const txt = path.join(tmp, 'urls.txt');
 fs.writeFileSync(txt, '# 註解\nhttps://x.com/1\nhttps://x.com/2\n');
@@ -102,7 +114,7 @@ const pages = [
 const agg = cli.aggregate(pages);
 eq('aggregate 掃描頁數(排除失敗)', agg.pagesScanned, 2);
 eq('aggregate 不重複失敗規則', agg.uniqueRulesFailing, 2);
-eq('aggregate 等級 A 計數', agg.byLevel.A, 3);
+eq('aggregate 等級 A 計數(不重複規則)', agg.byLevel.A, 2);
 eq('aggregate 受影響元素總數', agg.totalAffectedElements, 6);
 eq('aggregate 需人工複核總數', agg.needsManualReviewTotal, 1);
 eq('aggregate topRules 首位為 image-alt', agg.topRules[0].axeId, 'image-alt');

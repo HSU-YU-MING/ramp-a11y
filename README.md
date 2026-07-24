@@ -218,6 +218,10 @@ npm run scan -- --url-list url_inventory.csv --format html
 相容 PolyMigrate 遷移工具產出的 `url_inventory.csv`；當清單帶 `lang` 欄時，額外輸出**逐語言**
 無障礙彙整，讓已遷移的多語站能對各語言版本分別檢視 a11y（例：中文版 vs 英文版各自的違規）。
 
+> **使用倫理**：爬掃會對目標網站送出實際請求。預設每頁間隔 250ms、循序單執行緒；掃描**自己
+> 或已獲授權的網站**，掃他人網站前請確認符合對方使用條款，並以 `--delay`／`--max-pages`
+> 控制負載，勿造成伺服器壓力。
+
 > 架構、範圍與里程碑見 [docs/fullsite-cli-plan.md](docs/fullsite-cli-plan.md)。
 
 ## 限制聲明（重要）
