@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # 快速品質閘門：不需瀏覽器，秒級完成，作為必過關卡。
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint (ESLint)
+        run: npm run lint
+      - name: Format check (Prettier)
+        run: npm run format:check
+      - name: Unit tests（純函式）
+        run: npm run test:unit
+      - name: Self-audit（工具掃自己的 popup）
+        run: npm run test:self
+
+  # 端對端：需真 Chrome。e2e 以 headless:false 開視窗，故在 xvfb 虛擬顯示下執行。
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: 安裝 Chrome（installExtension 需 137+）
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - name: E2E（xvfb 虛擬顯示）
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: xvfb-run --auto-servernum node test/e2e/run-e2e.js
+      - name: 上傳失敗截圖
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-output
+          path: test/e2e/output/
+          if-no-files-found: ignore
