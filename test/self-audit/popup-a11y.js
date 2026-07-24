@@ -1,18 +1,22 @@
 /**
- * ramp-a11y 自我檢測（dogfooding）
+ * ramp-a11y popup 靜態無障礙契約測試
  *
  * 用法：npm run test:self（需 devDependency jsdom）
  *
- * 一個無障礙檢測工具，最該通過的就是自己的介面。本測試以 jsdom 解析
- * popup/popup.html，驗證幾條「不依賴版面」即可判定的靜態無障礙契約：
+ * 一個無障礙檢測工具，本身的介面理應無障礙。本測試以 jsdom 解析 popup/popup.html
+ * 的「靜態原始碼」，驗證幾條不依賴版面即可判定的無障礙契約：
  *   - 文件語言（html[lang]）與標題
  *   - 每個按鈕都有可存取名稱（文字內容或 aria-label）
  *   - 每個表單控制項都有關聯標籤（label[for] / 包裹 label / aria-label(ledby)）
  *   - 裝飾性圖形以 aria-hidden 隱藏，不干擾報讀
  *   - id 不重複、tablist 的分頁都有 aria-selected
  *
- * 版面相關規則（對比度、焦點順序等）仍由真 Chrome 的 e2e／人工驗證負責，
- * 此處只鎖住 jsdom 可確定的部分，讓 UI 迴歸能秒級被擋下。
+ * 範圍聲明（避免名不副實）：
+ *   - 這是「獨立手寫的靜態契約檢查」，並「不」實際載入 Ramp 的掃描引擎（axe／scanner.js）
+ *     來掃自己，因此並非嚴格意義的 dogfooding，也涵蓋不到 scanner 端的迴歸。
+ *   - jsdom 不執行 popup.js，只檢查簽入的 HTML 樣板；執行期由 JS 動態注入的控制項不在範圍內。
+ *     為避免「元素數為 0 時無意義地通過」，下方先斷言 popup 應有的最小 UI 面向仍存在。
+ *   - 版面相關規則（對比度、焦點順序等）仍由真 Chrome 的 e2e／人工驗證負責。
  */
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
@@ -68,8 +72,18 @@ check(
 check('有 <main> 地標', !!doc.querySelector('main'));
 check('有 <h1> 標題', !!(doc.querySelector('h1') && doc.querySelector('h1').textContent.trim()));
 
-// ===== 按鈕可存取名稱 =====
+// ===== 最小 UI 面向存在 =====
+// 「所有 X 都有 Y」的檢查在 X 數為 0 時會無意義地通過。先斷言 popup 應有的
+// 主要控制項仍存在，這樣若整段 UI 被移除或改為執行期 JS 注入（jsdom 看不到），
+// 測試會明確失敗，而非靜默地維持綠燈、暗中失去覆蓋。
 const buttons = [...doc.querySelectorAll('button')];
+const controls = [...doc.querySelectorAll('input, select, textarea')];
+const tabs = [...doc.querySelectorAll('[role="tab"]')];
+check(`popup 至少有 1 個按鈕（實得 ${buttons.length}）`, buttons.length >= 1);
+check(`popup 至少有 1 個表單控制項（實得 ${controls.length}）`, controls.length >= 1);
+check(`popup 至少有 1 個檢視模式分頁（實得 ${tabs.length}）`, tabs.length >= 1);
+
+// ===== 按鈕可存取名稱 =====
 const namelessBtn = buttons.filter((b) => !hasAccessibleName(b));
 check(
   `所有按鈕都有可存取名稱（共 ${buttons.length} 個）`,
@@ -78,7 +92,6 @@ check(
 );
 
 // ===== 表單控制項標籤 =====
-const controls = [...doc.querySelectorAll('input, select, textarea')];
 const unlabeled = controls.filter((c) => !hasFormLabel(c));
 check(
   `所有表單控制項都有關聯標籤（共 ${controls.length} 個）`,
@@ -110,7 +123,6 @@ const dupIds = ids.filter((id, i) => ids.indexOf(id) !== i);
 check('id 不重複', dupIds.length === 0, dupIds.length ? [...new Set(dupIds)].join(', ') : '');
 
 // ===== tablist 內每個 tab 都有 aria-selected =====
-const tabs = [...doc.querySelectorAll('[role="tab"]')];
 const tabNoState = tabs.filter((t) => t.getAttribute('aria-selected') === null);
 check(
   `每個 role=tab 都有 aria-selected（共 ${tabs.length} 個）`,

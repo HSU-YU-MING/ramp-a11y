@@ -8,7 +8,7 @@
     "test:unit": "node test/unit/run-unit.js",
     "test:self": "node test/self-audit/popup-a11y.js",
     "test:nvda": "node test/nvda/compare.js",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",

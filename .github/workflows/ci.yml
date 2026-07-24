@@ -6,10 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+# 最小權限：兩個 job 只需 checkout + build，不需寫入權限。
+permissions:
+  contents: read
+
+# 同一分支的連續 push／PR 更新取消尚在跑的舊 run，節省額度。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # 快速品質閘門：不需瀏覽器，秒級完成，作為必過關卡。
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -23,12 +33,13 @@ jobs:
         run: npm run format:check
       - name: Unit tests（純函式）
         run: npm run test:unit
-      - name: Self-audit（工具掃自己的 popup）
+      - name: Popup 靜態無障礙契約測試
         run: npm run test:self
 
   # 端對端：需真 Chrome。e2e 以 headless:false 開視窗，故在 xvfb 虛擬顯示下執行。
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

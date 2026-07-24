@@ -113,7 +113,7 @@ npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
 npm run test:unit    # 純函式單元測試（jsdom，數秒，不需 Chrome）：38 項
-npm run test:self    # 自我檢測：工具掃自己的 popup 靜態無障礙契約：10 項
+npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：53 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
 ```
@@ -124,9 +124,10 @@ e2e 另在 CI 以 xvfb 虛擬顯示搭配 stable Chrome 跑完整流程。
 - **單元測試** [test/unit/run-unit.js](test/unit/run-unit.js)：以 jsdom 載入 scanner 的內部純函式
   （NVDA 值／位置／狀態／表格、地標判定、視覺落差偵測），對合成 DOM 快速驗證，並檢查
   manifest 與 package 版本一致。這些邏輯不依賴版面，可秒級迭代，補足 e2e 的覆蓋。
-- **自我檢測（dogfooding）** [test/self-audit/popup-a11y.js](test/self-audit/popup-a11y.js)：一個無障礙
-  工具最該通過的就是自己的介面。以 jsdom 解析 popup，鎖住文件語言、按鈕與表單控制項的可存取
-  名稱、裝飾圖形隱藏、id 不重複等靜態契約，讓 UI 迴歸能秒級被擋下。
+- **popup 靜態無障礙契約** [test/self-audit/popup-a11y.js](test/self-audit/popup-a11y.js)：一個無障礙
+  工具本身的介面理應無障礙。以 jsdom 解析 popup.html 的靜態原始碼，鎖住文件語言、按鈕與表單
+  控制項的可存取名稱、裝飾圖形隱藏、id 不重複等契約，讓 UI 迴歸能秒級被擋下。（為獨立手寫的
+  靜態檢查，不載入 scanner／axe 掃自己，也不執行 popup.js；範圍與限制見檔頭聲明。）
 - **端對端** [test/e2e/run-e2e.js](test/e2e/run-e2e.js)：啟動獨立 Chrome 視窗（暫存 profile，
   不影響日常瀏覽器）跑完整流程；細節與已知限制（activeTab 無法程式化授權）見檔頭註解。
 - **真實 NVDA 對照** [test/nvda/](test/nvda/README.md)：以 [Guidepup](https://www.guidepup.dev/)
