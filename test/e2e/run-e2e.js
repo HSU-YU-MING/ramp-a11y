@@ -125,13 +125,18 @@ async function openPopup(browser, sw) {
     })
     .listen(PORT);
 
+  // CI（GitHub Actions runner 以 root 執行、無 user namespace）下 Chromium 需 --no-sandbox
+  // 才能啟動；本機以真 Chrome 執行時維持沙箱，不降低安全性。
+  const launchArgs = ['--no-first-run', '--no-default-browser-check', '--window-size=1400,900'];
+  if (process.env.CI) launchArgs.push('--no-sandbox');
+
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: false,
     defaultViewport: null,
     pipe: true,
     enableExtensions: true,
-    args: ['--no-first-run', '--no-default-browser-check', '--window-size=1400,900'],
+    args: launchArgs,
   });
 
   try {
