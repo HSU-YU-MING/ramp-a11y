@@ -1,8 +1,49 @@
 {
-  "name": "ramp-a11y",
+  "name": "cornhsu-ramp-scan",
   "version": "1.1.0",
-  "private": true,
-  "description": "Ramp — 網頁無障礙檢測 Chrome 擴充套件（對應台灣「網站無障礙規範」）",
+  "description": "全站無障礙檢測 CLI — 爬掃整個網站並對應台灣「網站無障礙規範」，是 Ramp（ramp-a11y）擴充套件的命令列版。Full-site web-accessibility scanner CLI mapped to Taiwan's Website Accessibility Guidelines.",
+  "bin": {
+    "ramp-scan": "cli/ramp-scan.js"
+  },
+  "files": [
+    "cli/",
+    "shared/",
+    "vendor/",
+    "content/scanner.js",
+    "data/rules-map.json",
+    "README.md",
+    "README.en.md"
+  ],
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "keywords": [
+    "accessibility",
+    "a11y",
+    "wcag",
+    "axe-core",
+    "cli",
+    "crawler",
+    "site-audit",
+    "台灣",
+    "網站無障礙規範",
+    "ramp",
+    "i18n",
+    "nvda"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HSU-YU-MING/ramp-a11y.git"
+  },
+  "homepage": "https://github.com/HSU-YU-MING/ramp-a11y#readme",
+  "bugs": {
+    "url": "https://github.com/HSU-YU-MING/ramp-a11y/issues"
+  },
+  "license": "MIT",
+  "author": "HSU-YU-MING",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "node test/e2e/run-e2e.js",
     "test:unit": "node test/unit/run-unit.js",
@@ -14,7 +55,11 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",
-    "pack": "node scripts/pack.js"
+    "pack": "node scripts/pack.js",
+    "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -24,7 +69,6 @@
     "eslint-config-prettier": "^9.1.2",
     "globals": "^15.15.0",
     "jsdom": "^25.0.1",
-    "prettier": "^3.9.6",
-    "puppeteer-core": "^24.0.0"
+    "prettier": "^3.9.6"
   }
 }

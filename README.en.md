@@ -59,12 +59,14 @@ This case highlights Ramp's three design goals: **map to the Taiwan standard**, 
 
 ## Full-site CLI (`ramp-scan`)
 
-The extension scans one tab. To **audit a whole site**, the repo ships a local Node CLI that runs the **exact same** scan and Taiwan-standard mapping on every page — the extension (interactive, single-page) and the CLI (batch, whole-site) are driven by **one shared mapping core** ([`shared/report-core.js`](shared/report-core.js)), written once and reused, with the module boundary preventing drift. No backend, no hosting — it runs locally.
+The extension scans one tab. To **audit a whole site**, Ramp ships a local Node CLI that runs the **exact same** scan and Taiwan-standard mapping on every page — the extension (interactive, single-page) and the CLI (batch, whole-site) are driven by **one shared mapping core** ([`shared/report-core.js`](shared/report-core.js)), written once and reused, with the module boundary preventing drift. No backend, no hosting — it runs locally.
+
+Published on npm as [`cornhsu-ramp-scan`](https://www.npmjs.com/package/cornhsu-ramp-scan) — no clone needed (requires a local Chrome; set `--chrome` / `CHROME_PATH` if it isn't auto-found):
 
 ```sh
-npm run scan -- https://example.com                          # single page
-npm run scan -- https://example.com --depth 2 --format html  # same-origin crawl → HTML report
-npm run scan -- --url-list url_inventory.csv --format html    # scan an external URL list
+npx cornhsu-ramp-scan https://example.com --depth 2 --format html  # zero-install
+npm i -g cornhsu-ramp-scan && ramp-scan https://example.com        # or install globally
+npm run scan -- --url-list url_inventory.csv --format html         # from a repo checkout
 ```
 
 It emits structured **JSON** (drop into CI) and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.

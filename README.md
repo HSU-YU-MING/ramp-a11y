@@ -202,6 +202,16 @@ CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變�
 核心資產一次撰寫、兩處複用，並以共用模組避免漂移。CLI 的 JSON 輸出可接進 CI pipeline，
 把「開發期單頁預檢」延伸成「可自動化的全站在地化稽核」。
 
+CLI 已發布為 npm 套件 [`cornhsu-ramp-scan`](https://www.npmjs.com/package/cornhsu-ramp-scan)，
+免 clone 即可用（需本機有 Chrome，`--chrome`／`CHROME_PATH` 可指定）：
+
+```sh
+npx cornhsu-ramp-scan https://example.com --depth 2 --format html   # 免安裝直接跑
+npm i -g cornhsu-ramp-scan && ramp-scan https://example.com         # 全域安裝後用 ramp-scan
+```
+
+在本 repo 內開發則用 `npm run scan --`：
+
 ```sh
 npm run scan -- <url> [options]
 
