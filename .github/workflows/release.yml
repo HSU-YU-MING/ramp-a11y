@@ -1,0 +1,70 @@
+name: release
+
+# 推 v1.1.0 這種 tag 就發佈 npm 套件 cornhsu-ramp-scan。
+# （擴充套件本身走 Chrome Web Store，不在此流程；此流程只發 CLI 的 npm 套件。）
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm 信任發布（OIDC）：GitHub 簽發 token，npm 換短效金鑰並自動簽 provenance
+    steps:
+      - uses: actions/checkout@v5
+
+      # 刻意不設 registry-url：它會在 .npmrc 寫 `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`，
+      # 而 OIDC 情境下該變數不存在 → npm 拿空 token 驗證而不改走 OIDC，直接發布失敗
+      # （actions/setup-node#1551）。預設 registry 本就是 npmjs.org，不需要設。
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # 信任發布需要 npm CLI >= 11.5.1；Node 22 內建的是 10.x
+      - name: Upgrade npm (trusted publishing 需要 >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - name: 確認 tag 版本與 package.json 一致
+        run: |
+          set -euo pipefail
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          PKG_VER=$(node -p "require('./package.json').version")
+          echo "tag=$TAG_VER package.json=$PKG_VER"
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::tag ($TAG_VER) 與 package.json ($PKG_VER) 版本不一致，請先同步再重打 tag"
+            exit 1
+          fi
+
+      # 認證自動切換（同 PolyMigrate 慣例）：
+      #   有 NPM_TOKEN secret → token（首次發布必須；信任發布要先有套件才設定得了）
+      #   沒有 NPM_TOKEN      → OIDC 信任發布（零長效金鑰）
+      # 首發後在 npmjs.com 設好 trusted publisher，再刪掉 NPM_TOKEN，這裡就自動改走 OIDC。
+      # 注意：不是用 NODE_AUTH_TOKEN——那個變數設成空字串會讓 npm 拿空 token 驗證而不改走 OIDC。
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "認證：token（首次發布）"
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+          else
+            echo "認證：OIDC 信任發布"
+          fi
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          # 冪等：版本已存在就跳過而不報錯（重跑 workflow 不會被擋）
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "↷ $NAME@$VER 已存在，跳過發布"
+            exit 0
+          fi
+          # npm publish 會先跑 prepublishOnly 閘門（lint + unit + self + cli）
+          npm publish --access public
