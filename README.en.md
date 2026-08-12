@@ -131,3 +131,4 @@ Differences that affect specific criteria (4.1.1, 2.5.8) are annotated in the re
 
 - Code: [MIT License](LICENSE).
 - Engine: [axe-core](https://github.com/dequelabs/axe-core) **v4.10.3** (MPL-2.0), bundled locally in `vendor/axe.min.js`. Re-verify `data/rules-map.json` when upgrading axe.
+- Full third-party terms: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
