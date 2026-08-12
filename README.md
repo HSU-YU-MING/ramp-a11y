@@ -307,3 +307,4 @@ npm run scan -- --url-list url_inventory.csv --format html
 
 - 本專案程式碼以 [MIT License](LICENSE) 授權。
 - 檢測引擎：[axe-core](https://github.com/dequelabs/axe-core) **v4.10.3**（MPL-2.0），以本地檔案形式打包於 `vendor/axe.min.js`。升級 axe 版本時請一併校對 `data/rules-map.json` 的規則異動。
+- 第三方元件完整授權條款見 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
