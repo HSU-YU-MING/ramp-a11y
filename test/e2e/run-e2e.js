@@ -153,12 +153,11 @@ async function openPopup(browser, sw) {
     // 繼續非同步地換它的網址與 render process；我們的 goto 撞上這個換頁，整個 frame
     // 會被拔掉，puppeteer 丟「Navigating frame was detached」。這是 Chrome 端的時序，
     // 測試無從等它安定，所以改開一支自己的分頁——生命週期完全由測試掌握。
+    // 也不要列舉 browser.pages() 去清掉開機那頁：pages() 會把每個 page target 都
+    // 實體化成 Page，遇到還沒附掛上 session 的 target 會直接丟
+    // 「Tab target session is not defined」。開機那頁留著無妨——bringToFront()
+    // 會把作用中分頁換成我們這頁，chrome.action.openPopup() 就找得到正確的分頁。
     const page = await browser.newPage();
-    // 開機那頁留著會干擾：chrome.action.openPopup() 作用於「作用中分頁」，
-    // 多一個我們不管理的分頁就多一個搶到前景的機會。
-    for (const stale of await browser.pages()) {
-      if (stale !== page) await stale.close().catch(() => {});
-    }
     await page.goto(`http://127.0.0.1:${PORT}/fixture.html`, { waitUntil: 'load' });
     await page.bringToFront();
 
