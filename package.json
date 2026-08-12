@@ -59,7 +59,7 @@
     "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli"
   },
   "dependencies": {
-    "puppeteer-core": "^24.0.0"
+    "puppeteer-core": "^25.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
