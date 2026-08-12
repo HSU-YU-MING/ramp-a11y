@@ -149,7 +149,16 @@ async function openPopup(browser, sw) {
     );
     const sw = await swTarget.worker();
 
-    const page = (await browser.pages())[0];
+    // 不沿用 Chrome 開機那一頁。那一頁是新分頁頁（NTP），Chrome 會在我們接手之後
+    // 繼續非同步地換它的網址與 render process；我們的 goto 撞上這個換頁，整個 frame
+    // 會被拔掉，puppeteer 丟「Navigating frame was detached」。這是 Chrome 端的時序，
+    // 測試無從等它安定，所以改開一支自己的分頁——生命週期完全由測試掌握。
+    const page = await browser.newPage();
+    // 開機那頁留著會干擾：chrome.action.openPopup() 作用於「作用中分頁」，
+    // 多一個我們不管理的分頁就多一個搶到前景的機會。
+    for (const stale of await browser.pages()) {
+      if (stale !== page) await stale.close().catch(() => {});
+    }
     await page.goto(`http://127.0.0.1:${PORT}/fixture.html`, { waitUntil: 'load' });
     await page.bringToFront();
 
