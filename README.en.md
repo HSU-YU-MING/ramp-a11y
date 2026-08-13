@@ -110,6 +110,8 @@ npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/
 
 Everything except e2e/nvda runs automatically on every push/PR via [GitHub Actions](.github/workflows/ci.yml); e2e also runs in CI under xvfb with a stable Chrome. See the Traditional-Chinese README for e2e troubleshooting.
 
+Releasing: the version lives in three places that none of them can drop — `package.json`, `package-lock.json`, and `manifest.json` (the Chrome Web Store reads the version from the manifest inside the zip, so it cannot be derived from the tag). `npm run release:prep -- 1.2.0` writes all three at once, then prints the remaining steps. Pushing a `v*` tag triggers [release.yml](.github/workflows/release.yml) to publish the npm package.
+
 ## Limitations (important)
 
 - **Automated checks cover only ~30–40%** of accessibility problems. Keyboard flow, real screen-reader experience, and whether content is *appropriate* still require human review.

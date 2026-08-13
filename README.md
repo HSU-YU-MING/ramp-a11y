@@ -131,6 +131,7 @@ ramp-a11y/
 │   ├── e2e/                 # 端對端迴歸測試（Puppeteer）
 │   └── nvda/                # 真實 NVDA 對照工具（Guidepup）
 ├── scripts/pack.js          # 上架打包腳本（產生 dist/*.zip）
+├── scripts/release-prep.js  # 發版前把版本號一次寫進三處（見〈發版〉）
 ├── eslint.config.js         # ESLint flat config
 ├── .prettierrc.json         # Prettier 設定
 ├── .github/workflows/ci.yml # GitHub Actions：品質閘門＋e2e
@@ -194,6 +195,21 @@ e2e 另在 CI 以 xvfb 虛擬顯示搭配 stable Chrome 跑完整流程。
 | 讀不到分頁網址、或部分測試判定「無法檢測」 | 正式 manifest 僅有 `activeTab`，程式化開啟 popup 不算使用者手勢、Chrome 不核發授權。e2e 會複製一份加了 `<all_urls>` 的暫存副本繞過（真實 activeTab 授權只能由真人點工具列圖示驗證）。 |
 
 CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變數），本機執行只需確保裝有 Chrome 137+。
+
+### 發版
+
+版本號有三個地方必須一致，而且都砍不掉——`package.json`（npm 發佈用）、`package-lock.json`
+（`npm ci` 要對得上）、`manifest.json`（Chrome 線上應用程式商店讀的是 zip 內這個欄位，必填、
+且上傳版本必須高於線上版，無法改由 tag 推導）。`release:prep` 讓「你手輸版本號」只發生一次：
+
+```sh
+npm run release:prep -- 1.2.0   # 三處一起寫；不 commit、不打 tag
+```
+
+它會擋掉預發布標記（`1.2.0-beta.1`，Chrome manifest 不收）與沒有變高的版本號，寫完再讀一次
+確認三處真的一致，然後印出接下來的指令。tag 仍是發版的觸發器與最終真相源——推 `v*` tag 會觸發
+[release.yml](.github/workflows/release.yml) 自動發佈 npm 套件（發佈前會跑 `prepublishOnly` 閘門）；
+擴充套件另走 `npm run pack` 產生 `dist/ramp-a11y-v*.zip` 再上傳商店。
 
 ## 全站爬掃 CLI（ramp-scan）
 
