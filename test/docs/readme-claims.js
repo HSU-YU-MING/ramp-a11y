@@ -8,7 +8,8 @@
  * 守三類：
  *   1. 各測試套件的項目數 == 實跑出來的數字（unit／self／cli 在此實跑；
  *      e2e 太慢且需真 Chrome，改由 test/e2e/run-e2e.js 自行呼叫 assertE2eCount）
- *   2. 官方檢測碼規則數 == data/rules-map.json 裡 twCheckCodes 非空的條數
+ *   2. 對應表的三個數字（皆算自 data/rules-map.json）：規則總數、涵蓋的台灣成功
+ *      準則數（twGuideline 去重）、標了官方檢測碼的規則數（twCheckCodes 非空）
  *   3. axe-core 版本 == vendor/axe.min.js 內嵌的 axe.version（唯一真相源），
  *      並與 shared/report-core.js 的 AXE_VERSION、兩份 README、THIRD-PARTY-NOTICES 一致
  *
@@ -127,19 +128,43 @@ function main() {
     }
   }
 
-  // --- 2. 官方檢測碼規則數 ---
+  // --- 2. 對應表的三個數字 ---
+  // 全部算自 data/rules-map.json：改對應表就一定會動到這些數字，而 README 不會
+  // 自己跟上。三個都是「加一條規則就可能失準」的類型，所以一起釘住。
   const rulesMap = JSON.parse(fs.readFileSync(path.join(REPO, 'data/rules-map.json'), 'utf8'));
-  const withCode = rulesMap.filter((r) => r.twCheckCodes && r.twCheckCodes.length).length;
-  const codeClaims = [
-    ['README.md', findClaim(readDoc('README.md'), /[:：]\s*(\d+)\s*條規則標示/)],
-    [
-      'README.en.md',
-      findClaim(readDoc('README.en.md'), /for (\d+) rules — the official inspection code/),
-    ],
+  const zh = readDoc('README.md');
+  const en = readDoc('README.en.md');
+  const mapClaims = [
+    {
+      label: '對應表規則總數',
+      actual: rulesMap.length,
+      found: [
+        ['README.md', findClaim(zh, /\*\*(\d+)\s*條 axe 規則\*\*/)],
+        ['README.en.md', findClaim(en, /\*\*(\d+)\s+axe rules\*\*/)],
+      ],
+    },
+    {
+      label: '涵蓋的台灣成功準則數',
+      actual: new Set(rulesMap.map((r) => r.twGuideline).filter(Boolean)).size,
+      found: [
+        ['README.md', findClaim(zh, /可自動化檢測的\s*\*{0,2}(\d+)\s*條/)],
+        ['README.en.md', findClaim(en, /\*\*(\d+)\s+auto-detectable\*\*/)],
+      ],
+    },
+    {
+      label: '標了官方檢測碼的規則數',
+      actual: rulesMap.filter((r) => r.twCheckCodes && r.twCheckCodes.length).length,
+      found: [
+        ['README.md', findClaim(zh, /[:：]\s*(\d+)\s*條規則標示/)],
+        ['README.en.md', findClaim(en, /for (\d+) rules — the official inspection code/)],
+      ],
+    },
   ];
-  for (const [rel, claim] of codeClaims) {
-    const ok = Boolean(claim) && Number(claim.value) === withCode;
-    check(`官方檢測碼規則數（${rel}）`, ok, ok ? `${withCode} 條` : fixHint(rel, claim, withCode));
+  for (const { label, actual, found } of mapClaims) {
+    for (const [rel, claim] of found) {
+      const ok = Boolean(claim) && Number(claim.value) === actual;
+      check(`${label}（${rel}）`, ok, ok ? `${actual}` : fixHint(rel, claim, actual));
+    }
   }
 
   // --- 3. axe-core 版本 ---
