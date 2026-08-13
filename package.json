@@ -57,6 +57,7 @@
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",
     "pack": "node scripts/pack.js",
+    "release:prep": "node scripts/release-prep.js",
     "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli && npm run test:docs"
   },
   "dependencies": {
