@@ -1,0 +1,16 @@
+# 關掉空白 issue：提問與功能建議走 Discussions，issue 只留給「有東西壞掉」，
+# 這樣 issue 清單才是可行動的待辦，不會被使用問題稀釋。
+blank_issues_enabled: false
+contact_links:
+  - name: 安全性漏洞 ／ Security vulnerability
+    url: https://github.com/HSU-YU-MING/ramp-a11y/security/advisories/new
+    about: 請勿開公開 issue，改用私密回報。政策見 SECURITY.md。
+  - name: 使用問題 ／ Questions
+    url: https://github.com/HSU-YU-MING/ramp-a11y/discussions/new?category=q-a
+    about: 怎麼用、檢測結果怎麼解讀、對應到哪條台灣規範——來這裡問。
+  - name: 功能建議 ／ Ideas
+    url: https://github.com/HSU-YU-MING/ramp-a11y/discussions/new?category=ideas
+    about: 想要的規則對應、報告格式、CLI 選項，先開討論再決定要不要做。
+  - name: 環境排錯 ／ Setup & troubleshooting
+    url: https://github.com/HSU-YU-MING/ramp-a11y#e2e-疑難排解
+    about: 掃不出來、找不到 Chrome、file:// 讀不到——多數屬於已知環境條件，這裡有對照表。

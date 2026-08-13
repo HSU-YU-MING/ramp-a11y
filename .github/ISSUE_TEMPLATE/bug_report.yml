@@ -1,0 +1,77 @@
+# 問題回報表單。刻意問死四件事——成品別、版本、瀏覽器/OS、受保護頁面與
+# file:// 權限——因為 README〈e2e 疑難排解〉列的四種已知環境條件，佔了
+# 「掃不出來」回報的絕大多數，少問一輪就要多來回一趟。
+name: 問題回報 ／ Bug report
+description: Ramp 擴充套件或 ramp-scan CLI 沒有照預期運作
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **安全性漏洞請勿開這裡**，改走
+        [Security → Report a vulnerability](https://github.com/HSU-YU-MING/ramp-a11y/security/advisories/new)（見 [SECURITY.md](https://github.com/HSU-YU-MING/ramp-a11y/blob/main/SECURITY.md)）。
+
+        自動化檢測本來就只涵蓋約三到四成的無障礙問題，「需人工複核」不代表工具壞掉——
+        詳見 README 的〈限制聲明〉。
+
+  - type: dropdown
+    id: product
+    attributes:
+      label: 哪一個成品？
+      options:
+        - 瀏覽器擴充套件（Ramp）
+        - 命令列工具（ramp-scan ／ cornhsu-ramp-scan）
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: >-
+        擴充套件：`chrome://extensions/` 的版本號。
+        CLI：`npm ls -g cornhsu-ramp-scan`，或看產出報告頁腳的「Ramp（ramp-a11y）v…」。
+      placeholder: '1.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 瀏覽器與作業系統
+      description: 擴充套件需 Chrome／Edge 102 以上；CLI 需本機裝有 Chrome 與 Node 18.17 以上。
+      placeholder: 'Chrome 141 ／ Windows 11'
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: >-
+        請附上**掃描的網址**。不方便公開就描述頁面特徵（例如「表格內嵌 iframe 的後台頁」），
+        或提供一個能重現的最小 HTML。
+      placeholder: |
+        1. 開啟 https://example.com
+        2. 點工具列 Ramp 圖示 →「開始檢測」
+        3. 切到「朗讀順序」分頁
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 預期結果與實際結果
+      description: CLI 問題請一併貼上**完整指令**與終端機輸出。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 排除已知環境條件
+      description: 這幾項是 README〈e2e 疑難排解〉列出的常見原因，勾掉可以省一輪往返。
+      options:
+        - label: 掃的是一般網頁，不是 `chrome://`、`edge://` 或擴充功能商店等受保護頁面
+        - label: （若掃 `file://` 頁面）已在擴充功能詳細資料頁開啟「允許存取檔案網址」
+        - label: （若為 CLI）Chrome 找得到，或已用 `--chrome` ／ `CHROME_PATH` 指定路徑
