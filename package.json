@@ -49,6 +49,7 @@
     "test:unit": "node test/unit/run-unit.js",
     "test:self": "node test/self-audit/popup-a11y.js",
     "test:cli": "node test/cli/run-cli-unit.js",
+    "test:docs": "node test/docs/readme-claims.js",
     "test:nvda": "node test/nvda/compare.js",
     "scan": "node cli/ramp-scan.js",
     "lint": "eslint . --max-warnings 0",
@@ -56,7 +57,7 @@
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",
     "pack": "node scripts/pack.js",
-    "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli"
+    "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli && npm run test:docs"
   },
   "dependencies": {
     "puppeteer-core": "^25.6.0"

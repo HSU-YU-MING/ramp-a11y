@@ -1,6 +1,7 @@
 /**
  * shared/report-core.js
- * 擴充套件（popup）與 CLI（ramp-scan）共用的純函式，避免兩邊各持一份而漂移：
+ * 擴充套件（popup）與 CLI（ramp-scan）共用的純函式與常數，避免兩邊各持一份而漂移：
+ *   - AXE_VERSION：打包於 vendor/ 的 axe-core 版本（報告頁腳署名用）
  *   - escapeHtml：HTML 逸出
  *   - resolveMapping：axe 規則 → 台灣「網站無障礙規範」對應（純資料，不含節點資料）
  *   - nvdaParts：NVDA 報讀預覽 → 依序的文字片段
@@ -14,6 +15,15 @@
   else root.RampShared = mod;
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
+
+  /**
+   * 打包於 vendor/axe.min.js 的 axe-core 版本。
+   * 擴充套件與 CLI 的報告頁腳都署這個名，兩邊不得各寫各的——否則升級 axe 時漏改一處，
+   * 報告就會對使用者謊報是哪個引擎測出來的，而且沒有任何測試會發現。
+   * 真相源是 vendor/axe.min.js 內的 axe.version；test/docs/readme-claims.js 會比對這裡、
+   * vendor 檔案與兩份 README／THIRD-PARTY-NOTICES 是否一致。
+   */
+  const AXE_VERSION = '4.10.3';
 
   function escapeHtml(str) {
     return String(str == null ? '' : str)
@@ -85,5 +95,5 @@
     return p;
   }
 
-  return { escapeHtml, resolveMapping, nvdaParts };
+  return { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts };
 });

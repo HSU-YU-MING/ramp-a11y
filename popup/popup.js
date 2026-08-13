@@ -84,8 +84,8 @@ function showView(name) {
   });
 }
 
-// 共用純函式（載於 popup.js 之前的 shared/report-core.js）：HTML 逸出、規則對應、NVDA 文字化
-const { escapeHtml, resolveMapping, nvdaParts } = window.RampShared;
+// 共用純函式與常數（載於 popup.js 之前的 shared/report-core.js）：HTML 逸出、規則對應、NVDA 文字化
+const { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts } = window.RampShared;
 
 /** 顯示錯誤畫面 */
 function showError(title, detail, canRetry) {
@@ -929,7 +929,7 @@ function buildReportHtml(scan) {
   <h1>Ramp 無障礙檢測報告</h1>
   <p class="info">檢測網址：${escapeHtml(scan.url)}<br>
   檢測時間：${escapeHtml(time)}<br>
-  工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core 4.10.3<br>
+  工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core ${escapeHtml(AXE_VERSION)}<br>
   對應標準：台灣「網站無障礙規範」現行 110.07 版（對齊 WCAG 2.1）；115 年修正版（對齊 WCAG 2.2）自 115 年 11 月 30 日生效，版本差異條目已於內文附註</p>
 </header>
 <table class="stats">
