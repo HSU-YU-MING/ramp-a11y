@@ -21,6 +21,8 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+// README 的 e2e 項目數守門。放這裡而不是 test:docs，是因為那支要秒級跑完、不能開 Chrome。
+const { assertE2eCount } = require('../docs/readme-claims.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const OUT = path.join(__dirname, 'output');
@@ -591,6 +593,16 @@ async function openPopup(browser, sw) {
     await browser.close();
     server.close();
     fs.rmSync(EXT, { recursive: true, force: true });
+  }
+
+  // 兩份 README 宣稱的 e2e 項目數必須等於實際跑的數。+1 是把這條檢查自己算進去，
+  // 讓 README 上的數字就是下面那行印出來的數字，人工核對時不必再心算。
+  //
+  // 只在其他測試全過時才驗：runStep 遇到整組例外會只推一筆失敗、跳過該組剩下的 check，
+  // 總數本來就會少。那種跑次已經紅燈了，再多一條「數量對不上」只是把真正的錯誤淹掉。
+  if (results.every((r) => r.ok)) {
+    const claim = assertE2eCount(results.length + 1);
+    check('README 宣稱的 e2e 項目數與實際一致', claim.ok, claim.detail);
   }
 
   const fails = results.filter((r) => !r.ok).length;

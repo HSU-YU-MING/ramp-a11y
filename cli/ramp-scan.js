@@ -23,7 +23,7 @@ const { parseArgs } = require('node:util');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
-const { escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
+const { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
 
 const REPO = path.resolve(__dirname, '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -601,7 +601,7 @@ function buildSiteHtml(site) {
     `檢測來源：${site.source}`,
     `檢測時間：${time}`,
     `模式：${site.crawl.mode}・掃描 ${a.pagesScanned} 頁（失敗 ${site.crawl.pagesFailed}${site.crawl.truncated ? '，達上限截斷' : ''}）`,
-    `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core 4.10.3`,
+    `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core ${AXE_VERSION}`,
     `目標等級 ${site.targetLevel}：目標內 ${tsp.within} 種規則・超出目標 ${tsp.beyond} 種（報告仍列出全部）`,
   ]);
   const stats = `<table class="stats">
@@ -644,7 +644,7 @@ function buildPageHtml(out) {
   const header = reportHeader('Ramp 無障礙檢測報告', [
     `檢測網址：${out.finalUrl}`,
     `檢測時間：${time}`,
-    `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core 4.10.3`,
+    `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core ${AXE_VERSION}`,
     `目標等級 ${out.targetLevel}：目標內 ${tsp.within} 項・超出目標 ${tsp.beyond} 項（報告仍列出全部）`,
   ]);
   const stats = `<table class="stats">

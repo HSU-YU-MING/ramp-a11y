@@ -160,8 +160,9 @@ npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExt
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
 npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：47 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
-npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：28 項
-npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：53 項
+npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：31 項
+npm run test:docs    # README 數字守門（測試項目數／檢測碼條數／axe 版本，比對真正的來源）
+npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：54 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
 ```
 

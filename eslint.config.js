@@ -50,6 +50,7 @@ module.exports = [
       'test/unit/**/*.js',
       'test/self-audit/**/*.js',
       'test/cli/**/*.js',
+      'test/docs/**/*.js',
       'eslint.config.js',
     ],
     languageOptions: {
