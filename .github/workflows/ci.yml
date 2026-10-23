@@ -27,8 +27,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: 相依安全（runtime 面不得有 high；dev 相依另以 overrides 管理）
-        run: npm audit --omit=dev --audit-level=high
       - name: Lint (ESLint)
         run: npm run lint
       - name: Format check (Prettier)
@@ -41,6 +39,11 @@ jobs:
         run: npm run test:cli
       - name: README 數字與版本字串守門
         run: npm run test:docs
+      # 放最後且 always()：audit 依賴外部 registry 與「之後才發布的 advisory」，紅燈時不該
+      # 遮住前面 lint／test 的結果（前面任一步失敗也照跑，讓兩種訊號都看得到）
+      - name: 相依安全（runtime 面不得有 high；dev 相依另以 overrides 管理）
+        if: always()
+        run: npm audit --omit=dev --audit-level=high
 
   # 端對端：需真 Chrome。e2e 以 headless:false 開視窗，故在 xvfb 虛擬顯示下執行。
   e2e:

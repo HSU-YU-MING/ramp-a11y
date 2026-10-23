@@ -19,4 +19,7 @@ module.exports = [
   'vendor',
   'icons',
   'shared',
+  // 授權文件必須隨成品散布：vendor/ 是 MPL-2.0（Deque），其餘是本專案的 MIT
+  'LICENSE',
+  'THIRD-PARTY-NOTICES.md',
 ];

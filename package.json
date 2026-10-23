@@ -12,7 +12,8 @@
     "content/scanner.js",
     "data/rules-map.json",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "engines": {
     "node": ">=22.12.0"

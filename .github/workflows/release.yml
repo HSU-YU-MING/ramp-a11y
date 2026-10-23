@@ -20,19 +20,30 @@ jobs:
       - uses: actions/checkout@v5
 
       # 對任意 commit 打 tag 都能走到這裡，但 prepublishOnly 不含 e2e（需 Chrome＋xvfb）。
-      # 發佈前要求該 commit 的 CI（quality＋e2e）已經綠燈，否則 npm 套件的實際掃描路徑
-      # 只靠「人記得先看 CI」守。CI 還在跑或沒跑過 → 明講原因並失敗，等綠了重跑本 workflow。
+      # 發佈前要求該 commit 的 CI（quality＋e2e，即 ci.yml 的 job id）已經綠燈，否則 npm
+      # 套件的實際掃描路徑只靠「人記得先看 CI」守。
+      # 常見的 `git push --follow-tags` 會讓 main 與 tag 同時推上來——CI 還在跑，所以這裡
+      # 輪詢等待（上限 30 分鐘）而不是立刻失敗。紅燈、被取消（ci.yml 有 cancel-in-progress，
+      # 連推兩個 commit 時舊的會被取消）、或等到逾時仍沒跑（不在 main 的 commit CI 不會跑）
+      # 都明講原因並失敗。
       - name: 確認該 commit 的 CI 已綠燈
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # annotated tag 時 GITHUB_SHA 不保證是 commit；以 checkout 結果取出 commit SHA
+          SHA=$(git rev-parse 'HEAD^{commit}')
           for NAME in quality e2e; do
-            CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=${NAME}" \
-              --jq '[.check_runs[] | select(.status == "completed")][0].conclusion // "missing"')
-            echo "check-run ${NAME}: ${CONCLUSION}"
-            if [ "$CONCLUSION" != "success" ]; then
-              echo "::error::此 commit 的 CI job「${NAME}」不是 success（${CONCLUSION}）。請等 CI 綠燈後重跑本 workflow，或先把 CI 修好再發版。"
+            for i in $(seq 1 60); do
+              STATE=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?check_name=${NAME}" \
+                --jq '.check_runs[0] | if . == null then "missing" elif .status != "completed" then "pending" else .conclusion end')
+              [ "$STATE" = "pending" ] || [ "$STATE" = "missing" ] || break
+              echo "check-run ${NAME}: ${STATE}，30 秒後再查（${i}/60）"
+              sleep 30
+            done
+            echo "check-run ${NAME}: ${STATE}"
+            if [ "$STATE" != "success" ]; then
+              echo "::error::commit ${SHA} 的 CI job「${NAME}」不是 success（${STATE}）。請先讓 CI 在這個 commit 上綠燈（cancelled 就重跑 CI），再重跑本 workflow。"
               exit 1
             fi
           done

@@ -1,6 +1,12 @@
-/**
- * vendor/axe-locale-zh_TW.js
- * 由 axe-core 4.10.3 的 locales/zh_TW.json 包裝而成（產生方式見 README）。
+/*! axe-core 4.10.3 locales/zh_TW.json
+ * Copyright (c) 2015 - 2025 Deque Systems, Inc.
+ *
+ * Your use of this Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * 由 axe-core 的 locales/zh_TW.json 包上 window.axe.configure(...) 載入外殼而成
+ * （語言內容未修改；產生方式見 README〈vendor 檔案的取得與更新〉）。
  * 需在 axe.min.js 之後注入：將 axe 內建規則說明切換為繁體中文，
  * 使未在 rules-map.json 對應表中的規則也能以繁中顯示。
  */
