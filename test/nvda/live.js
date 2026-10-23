@@ -76,6 +76,52 @@ const CASES = [
       document.getElementById('invalid').textContent = '無效區域文字';
     },
   },
+  {
+    name: '插入整個 aria-live="assertive" 節點（非 alert 角色）',
+    expectSpoken: null, // 未知：一般認知只有 alert 角色插入即播，交給真 NVDA 決定
+    text: '緊急區域文字',
+    run: () => {
+      const d = document.createElement('div');
+      d.setAttribute('aria-live', 'assertive');
+      d.textContent = '緊急區域文字';
+      document.getElementById('host').appendChild(d);
+    },
+  },
+  {
+    name: 'role=alert 插進「既有」的 polite 區域（念幾次？）',
+    expectSpoken: true,
+    text: '區域內的警告',
+    run: () => {
+      const d = document.createElement('div');
+      d.setAttribute('role', 'alert');
+      d.textContent = '區域內的警告';
+      document.getElementById('polite').appendChild(d);
+    },
+  },
+  {
+    name: '插入 display:none 的 role=alert（隱藏的 toast 模板）',
+    expectSpoken: false,
+    text: '隱藏的警告',
+    run: () => {
+      const d = document.createElement('div');
+      d.setAttribute('role', 'alert');
+      d.style.display = 'none';
+      d.textContent = '隱藏的警告';
+      document.getElementById('host').appendChild(d);
+    },
+  },
+  {
+    name: '插入帶 hidden 屬性的 role=alert',
+    expectSpoken: false,
+    text: '屬性隱藏的警告',
+    run: () => {
+      const d = document.createElement('div');
+      d.setAttribute('role', 'alert');
+      d.hidden = true;
+      d.textContent = '屬性隱藏的警告';
+      document.getElementById('host').appendChild(d);
+    },
+  },
 ];
 
 (async () => {
@@ -153,14 +199,18 @@ const CASES = [
     const before = (await pg.evaluate(() => window.__rampA11yLiveGet().log.length)) || 0;
     await nvda.press('Enter');
     await sleep(2500);
-    const spoken = (await nvda.spokenPhraseLog()).join(' ／ ');
-    const ours = (await pg.evaluate(() => window.__rampA11yLiveGet().log))
-      .slice(before)
-      .map((e) => `${e.text}（${e.politeness}）`)
-      .join(' ／ ');
-    const nvdaSaid = spoken.includes(c.text);
-    const weGot = ours.includes(c.text);
-    rows.push({ c, spoken, ours, nvdaSaid, weGot });
+    const phrases = await nvda.spokenPhraseLog();
+    const entries = (await pg.evaluate(() => window.__rampA11yLiveGet().log)).slice(before);
+    // 比「念了幾次」而不只是「有沒有念」——重複記錄（同一則記成兩筆）也是不忠實
+    const nvdaCount = phrases.filter((p) => p.includes(c.text)).length;
+    const ourCount = entries.filter((e) => e.text.includes(c.text)).length;
+    rows.push({
+      c,
+      spoken: phrases.join(' ／ '),
+      ours: entries.map((e) => `${e.text}（${e.politeness}）`).join(' ／ '),
+      nvdaCount,
+      ourCount,
+    });
   }
 
   await nvda.stop();
@@ -169,15 +219,15 @@ const CASES = [
 
   console.log('\n' + '═'.repeat(80));
   let mismatch = 0;
-  for (const { c, spoken, ours, nvdaSaid, weGot } of rows) {
-    const faithful = nvdaSaid === weGot;
-    const asExpected = nvdaSaid === c.expectSpoken;
+  for (const { c, spoken, ours, nvdaCount, ourCount } of rows) {
+    const faithful = nvdaCount === ourCount;
+    const asExpected = c.expectSpoken === null || nvdaCount > 0 === c.expectSpoken;
     if (!faithful) mismatch++;
     console.log(`${faithful ? '✅' : '❌'} ${c.name}`);
     console.log(
-      `   真 NVDA：${nvdaSaid ? '有念' : '沒念'}${asExpected ? '' : '（與預設假設不同！）'}　「${spoken || '—'}」`,
+      `   真 NVDA：念 ${nvdaCount} 次${asExpected ? '' : '（與預設假設不同！）'}　「${spoken || '—'}」`,
     );
-    console.log(`   我們的監看器：${weGot ? '有記' : '沒記'}　「${ours || '—'}」`);
+    console.log(`   我們的監看器：記 ${ourCount} 筆　「${ours || '—'}」`);
   }
   console.log('═'.repeat(80));
   console.log(mismatch ? `⚠ ${mismatch} 個情境模擬與真 NVDA 不一致` : '全部情境與真 NVDA 一致');

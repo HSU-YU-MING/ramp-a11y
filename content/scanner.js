@@ -20,8 +20,15 @@
  * 純函式（值/位置/狀態/表格/地標/落差偵測）皆有 test/unit 覆蓋，可秒級迭代。
  */
 (() => {
-  // 避免重複注入時重複定義
-  if (window.__rampA11yScan) return;
+  // 本檔的版本：擴充端取 manifest 版本（isolated world 可用 chrome.runtime）；
+  // CLI 以 addScriptTag 注入主 world，沒有 chrome.runtime → 'cli'
+  const VER =
+    typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest
+      ? chrome.runtime.getManifest().version
+      : 'cli';
+  // 避免重複注入時重複定義；但版本不同（擴充更新後，已開分頁裡殘留舊版）要蓋過去
+  if (window.__rampA11yScan && window.__rampA11yVer === VER) return;
+  window.__rampA11yVer = VER;
 
   const HIGHLIGHT_CLASS = 'ramp-a11y-highlight';
   const STYLE_ID = 'ramp-a11y-style';
@@ -251,21 +258,39 @@
    *  衝突解決：元素帶全域 ARIA 屬性（aria-label 等）或可聚焦時，瀏覽器會忽略
    *  presentation、保留原生語義（真 NVDA 對照證實：<nav role=presentation aria-label>
    *  仍念地標）。 */
+  // ARIA 1.2 的全域狀態／屬性（含已標 deprecated 但瀏覽器仍認的幾個）
   const PRESENTATION_OVERRIDES = [
+    'aria-atomic',
+    'aria-busy',
+    'aria-controls',
+    'aria-current',
+    'aria-describedby',
+    'aria-description',
+    'aria-details',
+    'aria-disabled',
+    'aria-dropeffect',
+    'aria-errormessage',
+    'aria-flowto',
+    'aria-grabbed',
+    'aria-haspopup',
+    'aria-invalid',
+    'aria-keyshortcuts',
     'aria-label',
     'aria-labelledby',
-    'aria-describedby',
-    'aria-details',
     'aria-live',
     'aria-owns',
-    'aria-controls',
+    'aria-relevant',
     'aria-roledescription',
-    'tabindex',
   ];
+  // 可聚焦也會觸發衝突解決（presentation 被忽略）
+  const PRESENTATION_FOCUSABLE =
+    'a[href],area[href],button,input,select,textarea,iframe,[tabindex],[contenteditable]:not([contenteditable="false"])';
   function isPresentational(el) {
     const r = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
     if (r !== 'presentation' && r !== 'none') return false;
-    return !PRESENTATION_OVERRIDES.some((a) => el.hasAttribute(a));
+    // 空值的屬性視同沒寫（瀏覽器對空字串的 ARIA 屬性一律當未設定）
+    if (PRESENTATION_OVERRIDES.some((a) => (el.getAttribute(a) || '').trim())) return false;
+    return !(el.matches && el.matches(PRESENTATION_FOCUSABLE));
   }
 
   /** 集合位置「{總數} 之 {序位}」（aria-posinset/setsize，或原生 li/option/radio 計算） */
@@ -289,10 +314,11 @@
     }
     if (roleEn === 'radio' && el.name) {
       const nm = window.CSS && CSS.escape ? CSS.escape(el.name) : el.name;
-      // 以所屬表單為範圍——同名 radio group 可以存在於不同 form，全頁查會把計數合併
-      const scope = el.form || document;
-      const radios = Array.prototype.slice.call(
-        scope.querySelectorAll('input[type="radio"][name="' + nm + '"]'),
+      // 以所屬表單為群組範圍——同名 radio group 可以存在於不同 form；表單外的同名 radio
+      // 自成一組（el.form 為 null）。用 r.form 比對才涵蓋以 form= 屬性關聯到表單的 radio
+      const radios = Array.prototype.filter.call(
+        document.querySelectorAll('input[type="radio"][name="' + nm + '"]'),
+        (r) => r.form === el.form,
       );
       const i = radios.indexOf(el);
       if (i >= 0) return radios.length + ' 之 ' + (i + 1);
@@ -557,7 +583,7 @@
     if (el.closest && el.closest('[aria-hidden="true"]')) return true;
     if (typeof el.checkVisibility === 'function') {
       // checkVisibilityCSS 是 Chrome 105 起的原始選項名，visibilityProperty 是
-      // 約 116 起的規範別名——兩個都傳，否則 105–115 會忽略未知選項、
+      // 約 121 起的規範別名——兩個都傳，否則 105–120 會忽略未知選項、
       // 漏掉 visibility:hidden 的排除（規範允許同義並存）
       return !el.checkVisibility({
         checkVisibilityCSS: true,
@@ -574,23 +600,42 @@
   function roTag(el) {
     return el.tagName.toUpperCase();
   }
-  /** inline SVG 是否有可朗讀名稱（aria-label／aria-labelledby／直屬 <title>） */
-  function roSvgHasName(el) {
-    if ((el.getAttribute('aria-label') || '').trim() || el.getAttribute('aria-labelledby')) {
-      return true;
+  /**
+   * inline SVG 的可朗讀名稱，依序：aria-labelledby 參照的文字 → aria-label → 直屬 <title>
+   * → 內含 <text> 的文字。最後一項是真 NVDA 對照（2026-10）的結果：沒有名稱但內含
+   * <text> 的 SVG，NVDA 念「圖片, 裝飾內文」——內文成了圖片的名稱，不是一般文字。
+   * axe 對裸 SVG 常算不出 accessible name，所以這裡自己補。
+   */
+  function roSvgName(el) {
+    const ref = (el.getAttribute('aria-labelledby') || '').trim();
+    if (ref) {
+      const t = ref
+        .split(/\s+/)
+        .map((id) => {
+          const n = document.getElementById(id);
+          return n ? (n.textContent || '').trim() : '';
+        })
+        .filter(Boolean)
+        .join(' ');
+      if (t) return t;
     }
-    return Array.prototype.some.call(
-      el.children,
-      (c) => roTag(c) === 'TITLE' && (c.textContent || '').trim(),
-    );
+    const label = (el.getAttribute('aria-label') || '').trim();
+    if (label) return label;
+    const title = Array.prototype.find.call(el.children, (c) => roTag(c) === 'TITLE');
+    if (title && (title.textContent || '').trim()) return title.textContent.trim();
+    const texts = Array.prototype.map
+      .call(el.getElementsByTagName('text'), (t) => (t.textContent || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    return texts || null;
   }
   function roIsObject(el) {
     const t = roTag(el);
     // 無 href 的 <a> 不是連結（NVDA 不當成獨立物件）
     if (t === 'A' && !el.getAttribute('href') && !el.getAttribute('role')) return false;
-    // 無名稱、無 role 的 inline SVG（裝飾圖示）：真 NVDA 對照（2026-10）完全不念，
-    // 不當成物件停點（子樹照常走訪，內含 <text> 時以文字呈現）
-    if (t === 'SVG' && !el.getAttribute('role') && !roSvgHasName(el)) return false;
+    // 無名稱、無 role 的 inline SVG（純裝飾圖示）：真 NVDA 對照（2026-10）完全不念，
+    // 不當成物件停點
+    if (t === 'SVG' && !el.getAttribute('role') && !roSvgName(el)) return false;
     if (RO_OBJECT_TAGS.has(t)) return true;
     const r = el.getAttribute('role');
     return !!(r && RO_WIDGET_ROLES.has(r.trim().split(/\s+/)[0]));
@@ -871,16 +916,23 @@
       } // getRole 無角色時的保底
       // 無 role 屬性的裸 inline SVG：axe 的 getRole 可能回 null 或 graphics-document
       // 這類 NVDA 翻譯未收錄的角色。真 NVDA 對照（2026-10）念的是「圖片, 營收圖表」——
-      // 用 NVDA 的 img 用詞；名稱保底取 aria-label（axe 對裸 SVG 常算不出 preview）
+      // 用 NVDA 的 img 用詞；名稱保底走 roSvgName（axe 對裸 SVG 常算不出 preview）
       if (roTag(c) === 'SVG') {
         if (!(nv && nv.role)) role = NVDA_ROLE_ZH.img;
-        if (!name) name = (c.getAttribute('aria-label') || '').trim() || null;
+        if (!name) name = roSvgName(c);
       }
       // 若物件是清單項目的唯一內容（li 無自身文字，如 <li><a>選單</a></li>），
       // 把清單位置掛到物件上——NVDA 會在念出該連結時一併報位置。
+      // 被拔除語義的清單（<ul role="presentation">，選單最常見的寫法）不報位置
+      //（真 NVDA 對照：只念「同頁, 連結, 選單一」）
       if (!position && c.closest) {
         const li = c.closest('li');
-        if (li && li.parentElement && /^(UL|OL|MENU)$/.test(li.parentElement.tagName)) {
+        if (
+          li &&
+          li.parentElement &&
+          /^(UL|OL|MENU)$/.test(li.parentElement.tagName) &&
+          !isPresentational(li.parentElement)
+        ) {
           const hasOwnText = Array.prototype.some.call(
             li.childNodes,
             (n) => n.nodeType === 3 && n.nodeValue.trim(),
@@ -1000,6 +1052,7 @@
 
   const LIVE_SEL =
     '[aria-live], [role="alert"], [role="status"], [role="log"], [role="timer"], [role="marquee"], output';
+  const LIVE_ALERT_SEL = '[role="alert"]';
 
   // 監看狀態掛在 window 上，跨多次注入與 popup 開關持續累積（頁面重整才清空）
   window.__rampA11yLive = window.__rampA11yLive || {
@@ -1036,9 +1089,22 @@
     return region.tagName === 'OUTPUT' ? 'polite' : null;
   }
 
+  /** 區域變動時是否整區播報：明寫的 aria-atomic 優先；否則 alert／status 依 ARIA 規範
+   *  隱含 aria-atomic=true（真 NVDA 對照：alert 插進既有 role=status，念的是整區
+   *  「已儲存區域內的警告」而不是只有新增的那段） */
+  function liveAtomic(region) {
+    const a = (region.getAttribute('aria-atomic') || '').toLowerCase();
+    if (a === 'true') return true;
+    if (a === 'false') return false;
+    const role = (region.getAttribute('role') || '').trim().split(/\s+/)[0].toLowerCase();
+    return role === 'alert' || role === 'status';
+  }
+
   /** 記錄一筆播報（去重、去空白、限長） */
   function liveRecord(region, text) {
-    if (region.closest && region.closest('[aria-hidden="true"]')) return; // 隱藏區域不播報
+    // 隱藏區域不播報：aria-hidden、display:none、hidden 屬性、visibility:hidden
+    //（真 NVDA 對照：插入隱藏的 role=alert 不念——預渲染的 toast 模板很常見）
+    if (roIsHidden(region)) return;
     const t = (text || '').replace(/\s+/g, ' ').trim();
     if (!t) return;
     const pol = livePoliteness(region);
@@ -1066,7 +1132,7 @@
             m.target && m.target.nodeType === 1 ? m.target : m.target && m.target.parentElement;
           const region = node && node.closest ? node.closest(LIVE_SEL) : null;
           if (region) {
-            if (region.getAttribute('aria-atomic') === 'true') {
+            if (liveAtomic(region)) {
               liveRecord(region, region.textContent); // 整區播報
             } else if (m.type === 'characterData') {
               liveRecord(region, m.target.nodeValue);
@@ -1078,20 +1144,23 @@
               liveRecord(region, added || region.textContent);
             }
           }
-          // 「整個 live region 節點被插入」——toast／表單錯誤的最主流寫法。
-          // m.target 是插入點的父節點，上面的 closest 永遠找不到新節點，必須
-          // 另掃 addedNodes 自身與其子樹。NVDA 對這種插入只保證播報 alert 類
-          // （role=alert／aria-live=assertive，alert 角色的定義行為）；polite
-          // 區域須先存在於頁面、其後的內容變動才播，插入當下不播，故不記。
+          // 「整個 role=alert 節點被插入」——toast／表單錯誤的最主流寫法。m.target 是
+          // 插入點的父節點，上面的 closest 永遠找不到新節點，必須另掃 addedNodes 自身與
+          // 子樹。真 NVDA 對照（2026-10，test/nvda/live.js）定出的規則：
+          //   - 只有 role=alert 插入即播（alert 角色的定義行為）；插入 aria-live=assertive
+          //     或 role=status 等節點，NVDA 都不念——區域須先存在，其後的變動才播
+          //   - 插進「既有」live region 裡的 alert 由外層區域記一次（上方已處理），
+          //     巢狀在另一個 alert 裡的也只記最外層——兩者都只有「沒有 live region 祖先」
+          //     的 alert 才記，否則同一則會記兩筆
           if (m.type === 'childList' && m.addedNodes.length) {
             m.addedNodes.forEach((n) => {
               if (n.nodeType !== 1) return;
-              const regs = [];
-              if (n.matches && n.matches(LIVE_SEL)) regs.push(n);
-              if (n.querySelectorAll) regs.push(...n.querySelectorAll(LIVE_SEL));
-              regs.forEach((rg) => {
-                if (rg === region) return; // 已在上方記過
-                if (livePoliteness(rg) === 'assertive') liveRecord(rg, rg.textContent);
+              const alerts = [];
+              if (n.matches && n.matches(LIVE_ALERT_SEL)) alerts.push(n);
+              if (n.querySelectorAll) alerts.push(...n.querySelectorAll(LIVE_ALERT_SEL));
+              alerts.forEach((rg) => {
+                const outer = rg.parentElement && rg.parentElement.closest(LIVE_SEL);
+                if (!outer && livePoliteness(rg) === 'assertive') liveRecord(rg, rg.textContent);
               });
             });
           }
@@ -1230,6 +1299,10 @@
     ariaListItemCount,
     isPresentational,
     roIsObject,
+    roIsHidden,
+    roSvgName,
+    liveAtomic,
+    tableGrid,
     nvdaDescription,
     nvdaStates,
     nvdaTableCell,
