@@ -40,6 +40,7 @@ let currentTabId = null; // 當前掃描的分頁 id
 let lastScan = null; // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
 let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）| live（動態播報）
 let readingData = null; // 朗讀順序資料快取（每次重新檢測時失效）
+let scanGeneration = 0; // 每次重新檢測 +1：分析途中被重新檢測蓋過的舊結果不得寫回快取
 let liveTimer = null; // 動態播報輪詢計時器
 
 // 使用者偏好（chrome.storage.local 持久化）
@@ -95,39 +96,20 @@ function showError(title, detail, canRetry) {
   showView('error');
 }
 
-/** 判斷是否為無法注入腳本的受保護頁面 */
-function isRestrictedUrl(url) {
-  if (!url) return true;
-  const restrictedSchemes = [
-    'chrome://',
-    'chrome-extension://',
-    'chrome-search://',
-    'chrome-devtools://',
-    'chrome-untrusted://',
-    'edge://',
-    'extension://',
-    'devtools://',
-    'about:',
-    'view-source:',
-    'blob:',
-    'data:',
-    'filesystem:',
-    // file:// 刻意不擋：使用者勾了「允許存取檔案網址」後掃本機檔案是合法情境，
-    // 沒勾時注入會失敗、由錯誤訊息轉譯分流
-  ];
-  if (restrictedSchemes.some((s) => url.startsWith(s))) return true;
-  // 擴充功能商店頁面同樣禁止注入
-  const restrictedHosts = [
-    'chromewebstore.google.com',
-    'chrome.google.com',
-    'microsoftedge.microsoft.com',
-  ];
-  try {
-    const host = new URL(url).hostname;
-    return restrictedHosts.some((h) => host === h || host.endsWith('.' + h));
-  } catch {
-    return true;
-  }
+// popup 的純邏輯（載於 popup.js 之前的 shared/popup-logic.js，有單元測試）
+const {
+  isRestrictedUrl,
+  liveSignature,
+  countByLevel,
+  reviewPersistPlan,
+  reviewStateFromStored,
+  reviewKeysToPrune,
+} = window.RampPopupLogic;
+
+/** 存檔失敗時出聲（快取提示列）——靜默失效是本專案反覆出現的失敗模式 */
+function showStorageNote(msg) {
+  cacheNoteEl.textContent = msg;
+  cacheNoteEl.hidden = false;
 }
 
 /** 載入 axe 規則 → 台灣規範 對應表 */
@@ -164,7 +146,7 @@ async function savePrefs() {
   try {
     await chrome.storage.local.set({ prefs });
   } catch {
-    /* 寫入失敗就用記憶體內的值，下次開 popup 回到舊偏好 */
+    showStorageNote('偏好設定未能儲存（儲存空間不足），本次仍有效，下次開啟會回到舊設定。');
   }
 }
 
@@ -182,17 +164,58 @@ async function loadReviewState(url) {
   reviewKey = 'review::' + url;
   try {
     const st = await chrome.storage.local.get(reviewKey);
-    reviewState = st[reviewKey] || {};
+    reviewState = reviewStateFromStored(st[reviewKey]);
   } catch {
     reviewState = {};
   }
 }
 
+/** 存目前網址的自評；全部清回未確認就整鍵移除；超過上限淘汰最舊的網址 */
+async function saveReviewState() {
+  const plan = reviewPersistPlan(reviewState, Date.now());
+  try {
+    if (plan.action === 'remove') {
+      await chrome.storage.local.remove(reviewKey);
+      return;
+    }
+    await chrome.storage.local.set({ [reviewKey]: plan.value });
+    // 每個檢測過的網址一筆、永不過期的話 storage.local 會無限成長——留最近 200 個
+    const prune = reviewKeysToPrune(await chrome.storage.local.get(null), reviewKey);
+    if (prune.length) await chrome.storage.local.remove(prune);
+  } catch {
+    showStorageNote('人工複核自評未能儲存（儲存空間不足）：本次匯出報告仍會包含，但關閉後會遺失。');
+  }
+}
+
 // ===== 掃描流程 =====
+
+/**
+ * 確保分頁裡有「這一版」的 axe、繁中語言包與掃描器（同一 isolated world 共用，
+ * axe 全域可被後續檔案取用；注入順序不可調換）。
+ * 先探測——重新檢測或切模式時少跑一次 axe.min.js（~550KB）的解析。探測同時比對
+ * 版本：擴充更新後，已開分頁裡可能殘留舊版的 window.axe 與掃描器，版本不同就重注入
+ * （scanner.js 開頭的守門也認版本，會蓋過舊定義）。頁面重整後 isolated world 是
+ * 全新的，探測自然為 false。
+ */
+async function ensureInjected(tabId) {
+  const ver = chrome.runtime.getManifest().version;
+  const probe = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (v) => !!(window.axe && window.__rampA11yScan && window.__rampA11yVer === v),
+    args: [ver],
+  });
+  if (!(probe && probe[0] && probe[0].result)) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+    });
+  }
+}
 
 async function runScan() {
   showView('loading');
   readingData = null; // 頁面即將重新檢測，舊的朗讀順序失效
+  scanGeneration += 1;
   try {
     await loadRulesMap();
 
@@ -215,19 +238,7 @@ async function runScan() {
     }
 
     // 步驟一：注入本地打包的 axe-core、繁中語言包與掃描器
-    // （同一 isolated world 共用，axe 全域可被後續檔案取用）。
-    // 先探測是否已注入——重新檢測時少跑一次 axe.min.js（~550KB）的解析；
-    // 頁面重整後 isolated world 是全新的，探測自然為 false 而重新注入
-    const probe = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => !!(window.axe && window.__rampA11yScan),
-    });
-    if (!(probe && probe[0] && probe[0].result)) {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
-      });
-    }
+    await ensureInjected(tab.id);
 
     // 步驟二：執行掃描，取回序列化的純資料
     const injection = await chrome.scripting.executeScript({
@@ -293,12 +304,7 @@ function translateRule(rule) {
 
 /** 渲染統計列（violations 已排除最佳實務項目） */
 function renderStats(violations, bpCount, incompleteCount) {
-  const levelCounts = { A: 0, AA: 0, AAA: 0 };
-  let unmapped = 0;
-  violations.forEach((v) => {
-    if (v.mapped) levelCounts[v.level] = (levelCounts[v.level] || 0) + 1;
-    else unmapped += 1;
-  });
+  const { levelCounts, unmapped } = countByLevel(violations);
 
   const parts = [
     `<span class="stat">違規總數 <strong>${violations.length}</strong></span>`,
@@ -599,19 +605,8 @@ function setModeUI(mode) {
 /** 注入掃描器並取得朗讀順序（線性化的無障礙樹＋視覺順序落差） */
 async function execReadingOrder() {
   if (currentTabId == null) return null;
-  // 朗讀順序的物件名稱依賴 axe（accessible name／role）。先探測是否已注入，
-  // 避免每次進此模式都重跑 axe.min.js（~550KB）造成不必要的解析成本。
-  const probe = await chrome.scripting.executeScript({
-    target: { tabId: currentTabId },
-    func: () => !!(window.axe && window.__rampA11yReadingOrder),
-  });
-  const ready = probe && probe[0] && probe[0].result;
-  if (!ready) {
-    await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
-    });
-  }
+  // 朗讀順序的物件名稱依賴 axe（accessible name／role）
+  await ensureInjected(currentTabId);
   const injection = await chrome.scripting.executeScript({
     target: { tabId: currentTabId },
     func: () => window.__rampA11yReadingOrder(),
@@ -692,8 +687,11 @@ async function enterReadingMode() {
   }
   readingSummaryEl.hidden = true;
   issuesEl.innerHTML = '<p class="ro-loading">正在分析整頁朗讀順序…</p>';
+  const gen = scanGeneration;
   try {
     const data = await execReadingOrder();
+    // 分析途中若已重新檢測，這份是舊頁面的結果：不寫回快取也不渲染
+    if (gen !== scanGeneration) return;
     // 大頁面分析要數秒，期間使用者可能已切回其他模式——此時只存快取、不渲染，
     // 否則朗讀清單會蓋掉已顯示的問題清單（refreshLive 同有此守門）
     if (data) readingData = data;
@@ -767,16 +765,27 @@ function liveItemHtml(e) {
 function renderLiveList(data) {
   const log = (data && data.log) || [];
   readingSummaryEl.hidden = false;
-  readingSummaryEl.innerHTML =
-    `監看即時區域中（aria-live／role=alert…）　已捕捉 <strong>${log.length}</strong> 則播報` +
-    `<button class="live-clear" type="button">清除</button>`;
+  // 摘要列只建一次、之後只改數字：每次重建會把「清除」鈕在 mousedown／mouseup 之間
+  // 換掉而吃點擊
+  let countEl = readingSummaryEl.querySelector('.live-count');
+  if (!countEl) {
+    readingSummaryEl.innerHTML =
+      '監看即時區域中（aria-live／role=alert…）　已捕捉 <strong class="live-count"></strong> 則播報' +
+      '<button class="live-clear" type="button">清除</button>';
+    countEl = readingSummaryEl.querySelector('.live-count');
+  }
+  countEl.textContent = String(log.length);
   if (!log.length) {
     issuesEl.innerHTML =
       '<p class="ro-empty">監看中… 在頁面上觸發動態變化（送出表單看錯誤訊息、按下儲存看提示、即時搜尋…），NVDA 會自動播報的內容就會依序出現在這裡。</p>';
     return;
   }
+  // 最新在上：使用者在頂端時維持看最新；已往下捲在讀舊播報時，新項目從上方插入
+  // 會把內容往下推——補回推移量，讓正在讀的那則停在原位（否則活躍頁面根本捲不動）
+  const prevTop = issuesEl.scrollTop;
+  const prevHeight = issuesEl.scrollHeight;
   issuesEl.innerHTML = log.slice().reverse().map(liveItemHtml).join('');
-  issuesEl.scrollTop = 0;
+  issuesEl.scrollTop = prevTop > 0 ? prevTop + (issuesEl.scrollHeight - prevHeight) : 0;
 }
 
 /** 上次渲染的播報簽章（筆數＋最後一筆時間戳）——內容沒變就不重繪 */
@@ -793,9 +802,8 @@ async function refreshLive() {
     const data = injection && injection[0] ? injection[0].result : null;
     if (currentMode !== 'live') return;
     const log = (data && data.log) || [];
-    // 每 1.2 秒無條件 innerHTML 重建會把捲動位置拉回頂端、讓「清除」鈕
-    // 在 mousedown/mouseup 之間被換掉而吃點擊——沒變化就跳過
-    const sig = `${log.length}:${log.length ? log[log.length - 1].ts : 0}`;
+    // 每 1.2 秒輪詢，內容沒變就跳過重繪
+    const sig = liveSignature(log);
     if (sig === lastLiveSig) return;
     lastLiveSig = sig;
     renderLiveList(data || { log: [] });
@@ -809,6 +817,7 @@ async function enterLiveMode() {
   setModeUI('live');
   lastLiveSig = null; // 重新進入一律重繪
   readingSummaryEl.hidden = true;
+  readingSummaryEl.innerHTML = ''; // 讓 renderLiveList 重建摘要列（朗讀模式也用這一列）
   issuesEl.innerHTML = '<p class="ro-loading">開始監看即時區域…</p>';
   try {
     await chrome.scripting.executeScript({
@@ -819,10 +828,18 @@ async function enterLiveMode() {
       target: { tabId: currentTabId },
       func: () => window.__rampA11yLiveStart && window.__rampA11yLiveStart(),
     });
+    // 與 enterReadingMode 同型的競態：幾個 await 之間使用者可能已切走——此時不建
+    // 輪詢（否則頁面端監看在 popup 開著時永遠不會 3 分鐘自停），也不碰畫面
+    if (currentMode !== 'live') return;
     await refreshLive();
+    if (currentMode !== 'live') return;
+    // 快速「動態 → 問題 → 動態」可能已建過一個：先清，免得舊的 id 被覆蓋後永遠清不掉
+    if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(refreshLive, 1200); // 每 1.2 秒輪詢新播報
   } catch (err) {
-    issuesEl.innerHTML = '<p class="ro-empty">無法在此頁面啟動動態監看，請重新檢測後再試。</p>';
+    if (currentMode === 'live') {
+      issuesEl.innerHTML = '<p class="ro-empty">無法在此頁面啟動動態監看，請重新檢測後再試。</p>';
+    }
   }
 }
 
@@ -880,13 +897,7 @@ function reportIssueHtml(item, badgeText, isReview) {
 /** 產生自包含的 HTML 檢測報告（可直接以瀏覽器開啟、列印轉 PDF） */
 function buildReportHtml(scan) {
   const { violations, bestPractice, incomplete } = classifyResults(scan.result);
-  const levelCounts = { A: 0, AA: 0, AAA: 0 };
-  let unmappedCount = 0;
-  violations.forEach((v) => {
-    // 與 renderStats 同樣防呆：twLevel 出現髒值時顯示 0 而非 NaN
-    if (v.mapped) levelCounts[v.level] = (levelCounts[v.level] || 0) + 1;
-    else unmappedCount += 1;
-  });
+  const { levelCounts, unmapped: unmappedCount } = countByLevel(violations);
 
   let body = '';
   LEVEL_ORDER.forEach((level) => {
@@ -1071,17 +1082,7 @@ issuesEl.addEventListener('change', async (e) => {
   const axeId = sel.dataset.axeId;
   if (sel.value) reviewState[axeId] = sel.value;
   else delete reviewState[axeId];
-  // await 才接得到失敗（MV3 Promise 語義）；全部清回「未確認」就整鍵移除，
-  // 否則每個檢測過的網址都留一筆空物件、storage.local 無限成長
-  try {
-    if (Object.keys(reviewState).length === 0) {
-      await chrome.storage.local.remove(reviewKey);
-    } else {
-      await chrome.storage.local.set({ [reviewKey]: reviewState });
-    }
-  } catch {
-    /* 寫入失敗：記憶體內狀態仍正確，匯出報告不受影響 */
-  }
+  await saveReviewState();
 });
 
 // popup 開啟時：
