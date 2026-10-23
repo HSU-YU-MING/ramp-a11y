@@ -90,10 +90,11 @@ CLI（`cli/ramp-scan.js`）**當然會對使用者指定的目標網站送真實
 英文錯誤訊息**再轉成友善繁中——**Chrome 改文案就會失效**。Chrome 大改版後若使用者回報
 「錯誤訊息變成英文原文」，先看這裡。
 
-### `pack.js` 的檔案白名單有兩份
+### 擴充套件的檔案清單真相源是 `scripts/ext-files.js`
 
-`scripts/pack.js` 的 `INCLUDE` 陣列與 `test/e2e/run-e2e.js` 的 `buildTestExtension`
-是**同一份清單抄兩處**。**新增頂層目錄時兩處都要加**，否則上架版缺檔而本機開發完全正常。
+`scripts/pack.js`（上架 zip）與 `test/e2e/run-e2e.js` 的 `buildTestExtension`（e2e 暫存副本）
+都 require 這一份。**新增頂層目錄時只改這裡**。過去是同一份清單抄兩處，漏改一邊的結果是
+「上架版缺檔而本機開發完全正常」——2026-10 稽核後抽成共用模組。
 
 ### `test:docs` 會因為你改了別的東西而紅燈
 
@@ -168,6 +169,12 @@ CLI 的 `--level` 一度是 no-op 卻在說明裡宣稱會過濾，是獨立審�
 `.eslintrc.yaml`）。但 `npm audit fix` 與 `npm update` 都判定「up to date」不肯動，
 最後用 `package.json` 的 `overrides` 精準指定修補版。下次遇到同樣情況照這條路走，
 並在 commit 裡寫清楚實際暴露面。
+
+**追記（2026-10 稽核）**：overrides 釘的修補版會被「之後才發布的新 advisory」蓋過——
+ed23f5b 釘的 js-yaml 4.3.1／brace-expansion 1.1.18 後來又各中一個 high，已更新到
+4.3.2／1.1.21（adm-zip 同批升 0.6.1）。overrides 不是一次性的：每次 `npm audit` 紅燈
+先檢查是不是釘的版本過期。CI 的 quality job 現在有 `npm audit --omit=dev --audit-level=high`
+守 runtime 面（dev 相依的噪音不弄紅 CI，但發現時照本段處理）。
 
 ## 時限性待辦（有硬期限）
 

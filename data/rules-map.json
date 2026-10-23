@@ -409,6 +409,7 @@
   },
   {
     "axeRuleId": "focus-visible",
+    "docOnly": true,
     "twGuideline": "2.4.7",
     "twGuidelineName": "焦點可視",
     "twLevel": "AA",

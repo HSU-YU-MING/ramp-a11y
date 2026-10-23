@@ -33,11 +33,11 @@ Click the Ramp toolbar icon on any normal page → "開始檢測" (Start scan). 
 - **Traditional-Chinese, educational explanations**: each finding says *why it is a barrier* and *how to fix it*, not just an error code.
 - **Click-to-locate**: click an affected element and Ramp highlights it on the live page and scrolls to it (respecting `prefers-reduced-motion`).
 - **NVDA screen-reader preview**: under each finding, Ramp shows how [NVDA](https://www.nvda.org.tw/) (the most common free screen reader in Taiwan) would announce the element — **name + role + value + state + set position + item count + description + table coordinates**. Wording is verified against NVDA's official `zh_TW` localization and cross-checked against **real NVDA** driven by Guidepup (two modes: Tab traversal + line-by-line browse mode).
-- **Reading-order preview**: linearizes the whole page into NVDA's actual reading sequence, marks landmark/table/list enter-exit boundaries, and flags **order mismatches** (visual left-to-right order vs. reading order on the same row — WCAG 1.3.2).
-- **Live-region monitoring**: a `MutationObserver` watches `aria-live` / `role=alert` / `status` / `log` regions and lists what NVDA would auto-announce, with priority (`assertive` vs `polite`).
+- **Reading-order preview**: linearizes the whole page into NVDA's actual reading sequence (up to 500 stops per pass, truncation flagged), marks landmark/table/list enter-exit boundaries, and flags **order mismatches** (visual left-to-right order vs. reading order on the same row — WCAG 1.3.2).
+- **Live-region monitoring**: a `MutationObserver` watches `aria-live` / `role=alert` / `status` / `log` regions and lists what NVDA would auto-announce, with priority (`assertive` vs `polite`). Monitoring auto-stops ~3 minutes after the popup closes; the latest 100 captured announcements are kept.
 - **Honest self/manual split**: axe `incomplete` results are marked "needs manual review" — no misleading "fully compliant" verdict.
 - **Manual-review self-assessment**: mark review items pass/fail, persisted per URL and included in the exported report.
-- **Report export**: one-click self-contained HTML report (open to read, print to PDF).
+- **Report export**: one-click self-contained HTML report (open to read, print to PDF; up to 20 affected elements listed per rule, with the total noted).
 - **Dark mode**, **target level** (default AA), **result filter** (all / violations / review), and **scan delay** (3 / 10 s for animated or lazy-loaded pages).
 
 ## Real-world case study
@@ -63,7 +63,7 @@ This case highlights Ramp's three design goals: **map to the Taiwan standard**, 
 
 The extension scans one tab. To **audit a whole site**, Ramp ships a local Node CLI that runs the **exact same** scan and Taiwan-standard mapping on every page — the extension (interactive, single-page) and the CLI (batch, whole-site) are driven by **one shared mapping core** ([`shared/report-core.js`](shared/report-core.js)), written once and reused, with the module boundary preventing drift. No backend, no hosting — it runs locally.
 
-Published on npm as [`cornhsu-ramp-scan`](https://www.npmjs.com/package/cornhsu-ramp-scan) — no clone needed (requires a local Chrome; set `--chrome` / `CHROME_PATH` if it isn't auto-found):
+Published on npm as [`cornhsu-ramp-scan`](https://www.npmjs.com/package/cornhsu-ramp-scan) — no clone needed (requires **Node.js 22.12+**, following puppeteer-core, and a local Chrome; set `--chrome` / `CHROME_PATH` if it isn't auto-found):
 
 ```sh
 npx cornhsu-ramp-scan https://example.com --depth 2 --format html  # zero-install
@@ -71,7 +71,7 @@ npm i -g cornhsu-ramp-scan && ramp-scan https://example.com        # or install 
 npm run scan -- --url-list url_inventory.csv --format html         # from a repo checkout
 ```
 
-It emits structured **JSON** (drop into CI) and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.
+It emits structured **JSON** and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). For CI, pass `--fail-on violations` to exit with code 3 when any violation is found. Exit codes: `0` scan completed, `1` usage error, `2` scan error (single-page failure, or **all** pages failed in multi-page mode; partial failures stay 0 and are recorded in the report), `3` `--fail-on` triggered — see `--help`. `--include`/`--exclude` filter discovered links and list entries (the crawl **start page is always scanned**); Chrome's sandbox is kept by default (`--no-sandbox` to opt out in containers). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.
 
 **Composes with [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate).** `--url-list` reads the `url_inventory.csv` produced by PolyMigrate (my i18n-first static-site migrator); when the list carries a `lang` column, Ramp additionally reports accessibility **per language** — so a migrated multilingual site can be audited for its Chinese and English versions separately (e.g. the zh page failing rules the en page doesn't). Two tools, one workflow: migrate the multilingual site, then audit each language's accessibility.
 
@@ -83,9 +83,9 @@ Ramp does **not** request persistent all-sites access. It uses only:
 
 - `activeTab` — temporary access to the current tab, granted only when you click the icon.
 - `scripting` — to inject axe-core and the scanner.
-- `storage` — session cache of scan results (cleared when the browser closes; never leaves your machine).
+- `storage` — session cache of scan results (cleared when the browser closes), plus local storage for preferences and per-URL manual-review self-assessments (persistent; clear anytime from the extensions page).
 
-All analysis runs locally in your browser; no data is sent to any server.
+Everything stays in your browser — all analysis runs locally and no data is sent to any server.
 
 ## From source (developers)
 
@@ -100,9 +100,9 @@ All analysis runs locally in your browser; no data is sent to any server.
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 47 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 59 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
-npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 31 checks
+npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 44 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
 npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 54 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
@@ -116,8 +116,9 @@ Releasing: the version lives in three places that none of them can drop — `pac
 
 - **Automated checks cover only ~30–40%** of accessibility problems. Keyboard flow, real screen-reader experience, and whether content is *appropriate* still require human review.
 - Results are **not** equivalent to any official accessibility accreditation; apply through the official process if you need a badge.
-- The mapping table covers **73 axe rules** across the **27 auto-detectable** success criteria of the Taiwan standard; the rest (keyboard traps, caption quality, reading order, …) inherently require manual testing.
+- The mapping table covers **73 entries** (72 actual axe rules plus a documentation-only entry for 2.4.7 Focus Visible) across **27 criteria** of the Taiwan standard, of which **26 auto-detectable**; the rest (keyboard traps, caption quality, reading order, …) inherently require manual testing.
 - Cross-origin iframe content is out of scope (MVP limitation).
+- Shadow DOM: the issue scan handles it (via axe; click-to-highlight may not locate those elements), but reading order and live-region monitoring do not descend into shadow roots yet.
 
 ## Standards & versions
 
@@ -126,7 +127,7 @@ Ramp targets Taiwan's "Website Accessibility Guidelines", currently in a transit
 | Version | Aligns with | Success criteria | Applies |
 |---------|-------------|------------------|---------|
 | 110.07 | WCAG 2.1 | 78 | current, until 2026-11-29 |
-| 115 amendment | WCAG 2.2 | 87 (adds 9, removes 4.1.1) | **effective 2026-11-30** |
+| 115 amendment | WCAG 2.2 | 86 (adds 9, removes 4.1.1) | **effective 2026-11-30** |
 
 Differences that affect specific criteria (4.1.1, 2.5.8) are annotated in the results and report. Official PDFs are included under `docs/`.
 

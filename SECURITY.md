@@ -40,9 +40,15 @@ review, which typically takes days and cannot be guaranteed.
 以下是刻意的設計，回報前請先確認不屬於這幾項：
 
 - 擴充套件只要求 `activeTab`／`scripting`／`storage`，掃描全在本機完成，
-  不傳送任何資料到外部伺服器；結果存在 session storage，關閉瀏覽器即清除。
+  不傳送任何資料到外部伺服器。掃描結果存在 session storage（關閉瀏覽器即清除）；
+  偏好設定與人工複核自評存在 local storage（自評以檢測過的網址為鍵、持久保存，
+  同樣只存在本機、不外傳）。
 - CLI（`ramp-scan`）會**對你指定的網站送出實際 HTTP 請求**。掃描對象的授權
   由使用者自負，見 README 的〈使用倫理〉。
+- CLI 為了注入檢測腳本，會在「被掃的頁面」上繞過該頁的 CSP
+  （Puppeteer `setBypassCSP`，僅影響檢測工作階段，不影響被測網站本身）。
+- CLI 預設**保留 Chrome 沙箱**；`--no-sandbox` 需由使用者明示開啟
+  （容器／root 等跑不起來的環境用；CI 環境變數存在時自動附加，與 e2e 同慣例）。
 - 產出的 HTML 報告會包含目標頁面的字串片段（元素選擇器、文字內容）。這些
   內容一律經 `escapeHtml` 逸出；若你找到可繞過的情形，那正是我們要收的回報。
 - 檢測引擎 axe-core 以本地檔案打包於 `vendor/`（MV3 CSP 不允許遠端載入），

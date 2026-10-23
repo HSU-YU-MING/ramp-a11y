@@ -136,16 +136,26 @@ function main() {
   const en = readDoc('README.en.md');
   const mapClaims = [
     {
-      label: '對應表規則總數',
+      label: '對應表條目總數',
       actual: rulesMap.length,
       found: [
-        ['README.md', findClaim(zh, /\*\*(\d+)\s*條 axe 規則\*\*/)],
-        ['README.en.md', findClaim(en, /\*\*(\d+)\s+axe rules\*\*/)],
+        ['README.md', findClaim(zh, /對應表收錄\s*\*\*(\d+)\s*條\*\*對應條目/)],
+        ['README.en.md', findClaim(en, /\*\*(\d+)\s+entries\*\*/)],
       ],
     },
     {
       label: '涵蓋的台灣成功準則數',
       actual: new Set(rulesMap.map((r) => r.twGuideline).filter(Boolean)).size,
+      found: [
+        ['README.md', findClaim(zh, /成功準則\s*\*\*(\d+)\s*條\*\*/)],
+        ['README.en.md', findClaim(en, /across \*\*(\d+)\s+criteria\*\*/)],
+      ],
+    },
+    {
+      // 2.4.7（focus-visible）是文件性條目（docOnly），axe 沒有對應的自動化規則——
+      // 「可自動化」的準則數必須排除它，否則 README 會把人工項目灌進自動化涵蓋率
+      label: '可自動化檢測的準則數（排除 docOnly）',
+      actual: new Set(rulesMap.filter((r) => !r.docOnly).map((r) => r.twGuideline)).size,
       found: [
         ['README.md', findClaim(zh, /可自動化檢測的\s*\*{0,2}(\d+)\s*條/)],
         ['README.en.md', findClaim(en, /\*\*(\d+)\s+auto-detectable\*\*/)],
@@ -167,9 +177,50 @@ function main() {
     }
   }
 
+  // --- 2.5 對應表的規則必須真的存在於打包的 axe ---
+  // 幽靈規則（對應表有、axe 沒有）永遠不會觸發，README 的涵蓋宣稱會靜默灌水。
+  // 文件性條目（docOnly: true，如 2.4.7 focus-visible）是刻意保留的規範對照，豁免。
+  const axeSrcEarly = fs.readFileSync(path.join(REPO, 'vendor/axe.min.js'), 'utf8');
+  const ghosts = rulesMap
+    .filter((r) => !r.docOnly && !axeSrcEarly.includes(`"${r.axeRuleId}"`))
+    .map((r) => r.axeRuleId);
+  check(
+    '對應表規則皆存在於 vendor axe（docOnly 除外）',
+    ghosts.length === 0,
+    ghosts.length
+      ? `vendor/axe.min.js 找不到：${ghosts.join('、')}（移除條目，或確為文件性對照就標 docOnly: true）`
+      : `${rulesMap.filter((r) => !r.docOnly).length} 條皆存在`,
+  );
+
+  // --- 2.6 engines 宣稱不得低於 puppeteer-core 的實際需求 ---
+  // 1.1.0 之後 puppeteer-core 25.x 把下限抬到 Node 22.12，而 engines 還留在 18.17——
+  // 使用者裝得起來（EBADENGINE 只是警告）、跑起來才炸。釘住兩者的下限關係。
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
+  const puppeteerPkgPath = path.join(REPO, 'node_modules/puppeteer-core/package.json');
+  if (fs.existsSync(puppeteerPkgPath)) {
+    const minOf = (range) => {
+      const m = String(range || '').match(/(\d+)\.(\d+)\.(\d+)/);
+      return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+    };
+    const ours = minOf(pkg.engines && pkg.engines.node);
+    const theirs = minOf(JSON.parse(fs.readFileSync(puppeteerPkgPath, 'utf8')).engines?.node);
+    const gte = (a, b) =>
+      a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] >= b[2];
+    check(
+      'engines.node 下限 ≥ puppeteer-core 的需求',
+      Boolean(ours && theirs && gte(ours, theirs)),
+      ours && theirs
+        ? `package.json ${ours.join('.')} vs puppeteer-core ${theirs.join('.')}` +
+            (gte(ours, theirs) ? '' : '（請把 package.json 的 engines.node 抬到不低於後者）')
+        : '解析不到 engines 範圍，請人工檢查',
+    );
+  } else {
+    check('engines.node 下限 ≥ puppeteer-core 的需求', false, '未安裝 node_modules，請先 npm ci');
+  }
+
   // --- 3. axe-core 版本 ---
   // 真相源：vendor/axe.min.js 內嵌的 axe.version="X.Y.Z"
-  const axeSrc = fs.readFileSync(path.join(REPO, 'vendor/axe.min.js'), 'utf8');
+  const axeSrc = axeSrcEarly;
   const axeMatch = axeSrc.match(/axe\.version\s*=\s*["'](\d+\.\d+\.\d+)["']/);
   const trueAxe = axeMatch ? axeMatch[1] : null;
   check('vendor/axe.min.js 可讀出 axe.version', Boolean(trueAxe), trueAxe || '找不到版本字串');
