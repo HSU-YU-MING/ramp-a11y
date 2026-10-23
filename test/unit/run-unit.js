@@ -202,6 +202,31 @@ eq(
   null,
 );
 
+// 呈現性角色衝突解決：帶全域 ARIA 屬性時 presentation 被忽略（真 NVDA 對照證實仍念地標）
+check(
+  'isPresentational 帶 aria-label → 不算（衝突解決）',
+  I.isPresentational(el('<nav role="presentation" aria-label="x"></nav>')) === false,
+);
+eq(
+  'roLandmark nav presentation＋aria-label → 仍是導覽區',
+  I.roLandmark(el('<nav role="presentation" aria-label="假導覽"></nav>')),
+  '導覽區',
+);
+
+// 表頭列（整列都是 th）的格子不帶列標題（真 NVDA：「第 2 欄, 數量」不念「品項」）
+mount(
+  '<table><tr><th>品項</th><th id="h2">數量</th></tr><tr><th>一月</th><td id="d2">3</td></tr></table>',
+);
+eq('nvdaTableCell 表頭列不帶列標題', I.nvdaTableCell(doc.getElementById('h2')).rowHeader, null);
+eq('nvdaTableCell 資料列仍帶列標題', I.nvdaTableCell(doc.getElementById('d2')).rowHeader, '一月');
+
+// inline SVG：有名稱才是物件停點（真 NVDA：無名稱的裝飾 SVG 完全不念）
+const svgNamed = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+svgNamed.setAttribute('aria-label', '營收圖表');
+const svgBare = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+check('roIsObject 有名稱的 SVG（小寫 tagName）→ 停點', I.roIsObject(svgNamed) === true);
+check('roIsObject 無名稱的裝飾 SVG → 非停點', I.roIsObject(svgBare) === false);
+
 // ===== ariaListItemCount：巢狀 ARIA 清單只數直屬項目 =====
 const nestedList = el(
   '<div role="list"><div role="listitem">a</div>' +

@@ -246,11 +246,26 @@
     return null;
   }
 
-  /** role 的第一個 token 是否為 presentation/none——這類元素被明確拔除語義，
-   *  NVDA 不會念表格座標、地標或清單邊界（這正是排版表格的補救手段），照播會誤導。 */
+  /** role 的第一個 token 是否為 presentation/none，且沒有觸發 ARIA 的「呈現性角色衝突
+   *  解決」——這類元素被拔除語義，NVDA 不念表格座標、地標或清單邊界（排版表格的補救手段）。
+   *  衝突解決：元素帶全域 ARIA 屬性（aria-label 等）或可聚焦時，瀏覽器會忽略
+   *  presentation、保留原生語義（真 NVDA 對照證實：<nav role=presentation aria-label>
+   *  仍念地標）。 */
+  const PRESENTATION_OVERRIDES = [
+    'aria-label',
+    'aria-labelledby',
+    'aria-describedby',
+    'aria-details',
+    'aria-live',
+    'aria-owns',
+    'aria-controls',
+    'aria-roledescription',
+    'tabindex',
+  ];
   function isPresentational(el) {
     const r = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
-    return r === 'presentation' || r === 'none';
+    if (r !== 'presentation' && r !== 'none') return false;
+    return !PRESENTATION_OVERRIDES.some((a) => el.hasAttribute(a));
   }
 
   /** 集合位置「{總數} 之 {序位}」（aria-posinset/setsize，或原生 li/option/radio 計算） */
@@ -386,8 +401,12 @@
     const topCell = grid.occ[0] && grid.occ[0][pos.col - 1];
     if (topCell && topCell.tagName === 'TH' && topCell !== el)
       colHeader = (topCell.textContent || '').trim() || null;
-    const leftCell = grid.occ[pos.row - 1] && grid.occ[pos.row - 1][0];
-    if (leftCell && leftCell.tagName === 'TH' && leftCell !== el)
+    // 列標題＝該列第一欄的 th；但「整列都是 th」的表頭列裡，左邊那格是欄標題而非
+    // 列標題——真 NVDA 對表頭列的「數量」只念「第 2 欄, 數量」，不帶「品項」
+    const rowCells = grid.occ[pos.row - 1] || [];
+    const isHeaderRow = rowCells.length > 0 && rowCells.every((c) => c && c.tagName === 'TH');
+    const leftCell = rowCells[0];
+    if (!isHeaderRow && leftCell && leftCell.tagName === 'TH' && leftCell !== el)
       rowHeader = (leftCell.textContent || '').trim() || null;
     return { coord, colHeader, rowHeader };
   }
@@ -555,10 +574,23 @@
   function roTag(el) {
     return el.tagName.toUpperCase();
   }
+  /** inline SVG 是否有可朗讀名稱（aria-label／aria-labelledby／直屬 <title>） */
+  function roSvgHasName(el) {
+    if ((el.getAttribute('aria-label') || '').trim() || el.getAttribute('aria-labelledby')) {
+      return true;
+    }
+    return Array.prototype.some.call(
+      el.children,
+      (c) => roTag(c) === 'TITLE' && (c.textContent || '').trim(),
+    );
+  }
   function roIsObject(el) {
     const t = roTag(el);
     // 無 href 的 <a> 不是連結（NVDA 不當成獨立物件）
     if (t === 'A' && !el.getAttribute('href') && !el.getAttribute('role')) return false;
+    // 無名稱、無 role 的 inline SVG（裝飾圖示）：真 NVDA 對照（2026-10）完全不念，
+    // 不當成物件停點（子樹照常走訪，內含 <text> 時以文字呈現）
+    if (t === 'SVG' && !el.getAttribute('role') && !roSvgHasName(el)) return false;
     if (RO_OBJECT_TAGS.has(t)) return true;
     const r = el.getAttribute('role');
     return !!(r && RO_WIDGET_ROLES.has(r.trim().split(/\s+/)[0]));
@@ -838,10 +870,10 @@
         role = RO_OBJ_FALLBACK[roTag(c)] || c.tagName.toLowerCase();
       } // getRole 無角色時的保底
       // 無 role 屬性的裸 inline SVG：axe 的 getRole 可能回 null 或 graphics-document
-      // 這類 NVDA 翻譯未收錄的角色——以既有的「圖形」保底；名稱同樣保底取 aria-label
-      //（axe 對裸 SVG 常整個算不出 preview，標籤不該因此消失）
+      // 這類 NVDA 翻譯未收錄的角色。真 NVDA 對照（2026-10）念的是「圖片, 營收圖表」——
+      // 用 NVDA 的 img 用詞；名稱保底取 aria-label（axe 對裸 SVG 常算不出 preview）
       if (roTag(c) === 'SVG') {
-        if (!(nv && nv.role)) role = RO_OBJ_FALLBACK.SVG;
+        if (!(nv && nv.role)) role = NVDA_ROLE_ZH.img;
         if (!name) name = (c.getAttribute('aria-label') || '').trim() || null;
       }
       // 若物件是清單項目的唯一內容（li 無自身文字，如 <li><a>選單</a></li>），
@@ -1197,6 +1229,7 @@
     nvdaItemCount,
     ariaListItemCount,
     isPresentational,
+    roIsObject,
     nvdaDescription,
     nvdaStates,
     nvdaTableCell,
