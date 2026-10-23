@@ -15,7 +15,7 @@
     "README.en.md"
   ],
   "engines": {
-    "node": ">=18.17.0"
+    "node": ">=22.12.0"
   },
   "keywords": [
     "accessibility",
@@ -66,7 +66,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@guidepup/guidepup": "^0.28.1",
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.2",
     "globals": "^15.15.0",
@@ -74,7 +74,7 @@
     "prettier": "^3.9.6"
   },
   "overrides": {
-    "js-yaml": "^4.3.1",
-    "brace-expansion": "^1.1.18"
+    "js-yaml": "^4.3.2",
+    "brace-expansion": "^1.1.21"
   }
 }
