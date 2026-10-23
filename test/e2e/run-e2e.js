@@ -47,16 +47,8 @@ function findChrome() {
 // ===== 建立測試副本（加 <all_urls>）=====
 function buildTestExtension() {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'ramp-a11y-e2e-'));
-  for (const item of [
-    'manifest.json',
-    'popup',
-    'content',
-    'background',
-    'data',
-    'vendor',
-    'icons',
-    'shared',
-  ]) {
+  // 清單真相源在 scripts/ext-files.js（與上架 zip 共用，不會再兩處漂移）
+  for (const item of require(path.join(REPO, 'scripts/ext-files.js'))) {
     fs.cpSync(path.join(REPO, item), path.join(dest, item), { recursive: true });
   }
   const mfPath = path.join(dest, 'manifest.json');

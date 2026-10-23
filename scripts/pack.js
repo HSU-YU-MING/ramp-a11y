@@ -11,17 +11,8 @@ const AdmZip = require('adm-zip');
 const REPO = path.resolve(__dirname, '..');
 const DIST = path.join(REPO, 'dist');
 
-// 與 test/e2e/run-e2e.js 的 buildTestExtension 同一份清單（上架版不改 manifest）
-const INCLUDE = [
-  'manifest.json',
-  'popup',
-  'content',
-  'background',
-  'data',
-  'vendor',
-  'icons',
-  'shared',
-];
+// 清單真相源在 scripts/ext-files.js（與 e2e 的 buildTestExtension 共用，上架版不改 manifest）
+const INCLUDE = require('./ext-files.js');
 
 const manifest = JSON.parse(fs.readFileSync(path.join(REPO, 'manifest.json'), 'utf8'));
 fs.mkdirSync(DIST, { recursive: true });

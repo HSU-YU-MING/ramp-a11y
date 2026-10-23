@@ -27,6 +27,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: 相依安全（runtime 面不得有 high；dev 相依另以 overrides 管理）
+        run: npm audit --omit=dev --audit-level=high
       - name: Lint (ESLint)
         run: npm run lint
       - name: Format check (Prettier)

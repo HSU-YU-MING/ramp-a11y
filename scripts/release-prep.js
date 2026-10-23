@@ -90,7 +90,9 @@ console.log('  ✓ package.json、package-lock.json');
 // manifest.json 用字串取代而非 JSON.stringify，避免重排欄位順序與縮排
 // （這個檔案人也要讀，diff 應該只有一行）。
 const manifestSrc = fs.readFileSync(MANIFEST, 'utf8');
-const VERSION_FIELD = /("version"\s*:\s*")[^"]+(")/;
+// 錨定行首：regex 取的是全檔第一個匹配，若未來 manifest 加入其他 "version": "…" 形狀
+// 的欄位且排在前面就會改錯處；行首錨定讓它只認頂層欄位的典型縮排寫法
+const VERSION_FIELD = /^(\s{0,4}"version"\s*:\s*")[^"]+(")/m;
 if (!VERSION_FIELD.test(manifestSrc)) {
   die('manifest.json 裡找不到 version 欄位，請手動檢查');
 }

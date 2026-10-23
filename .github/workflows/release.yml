@@ -14,9 +14,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: read # 發佈前查該 commit 的 CI check-runs
       id-token: write # npm 信任發布（OIDC）：GitHub 簽發 token，npm 換短效金鑰並自動簽 provenance
     steps:
       - uses: actions/checkout@v5
+
+      # 對任意 commit 打 tag 都能走到這裡，但 prepublishOnly 不含 e2e（需 Chrome＋xvfb）。
+      # 發佈前要求該 commit 的 CI（quality＋e2e）已經綠燈，否則 npm 套件的實際掃描路徑
+      # 只靠「人記得先看 CI」守。CI 還在跑或沒跑過 → 明講原因並失敗，等綠了重跑本 workflow。
+      - name: 確認該 commit 的 CI 已綠燈
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for NAME in quality e2e; do
+            CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=${NAME}" \
+              --jq '[.check_runs[] | select(.status == "completed")][0].conclusion // "missing"')
+            echo "check-run ${NAME}: ${CONCLUSION}"
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "::error::此 commit 的 CI job「${NAME}」不是 success（${CONCLUSION}）。請等 CI 綠燈後重跑本 workflow，或先把 CI 修好再發版。"
+              exit 1
+            fi
+          done
 
       # 刻意不設 registry-url：它會在 .npmrc 寫 `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`，
       # 而 OIDC 情境下該變數不存在 → npm 拿空 token 驗證而不改走 OIDC，直接發布失敗
@@ -66,5 +85,5 @@ jobs:
             echo "↷ $NAME@$VER 已存在，跳過發布"
             exit 0
           fi
-          # npm publish 會先跑 prepublishOnly 閘門（lint + unit + self + cli）
+          # npm publish 會先跑 prepublishOnly 閘門（lint + unit + self + cli + docs）
           npm publish --access public
