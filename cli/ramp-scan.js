@@ -26,6 +26,7 @@ const puppeteer = require('puppeteer-core');
 const { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
 
 const REPO = path.resolve(__dirname, '..');
+const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // page.evaluate 沒有 Puppeteer 逾時；掃描/腳本卡住會拖死整個爬蟲，故自行加逾時。
@@ -67,9 +68,11 @@ function parseCliArgs(argv) {
       exclude: { type: 'string' },
       'url-list': { type: 'string' },
       level: { type: 'string', default: 'AA' },
+      'fail-on': { type: 'string', default: 'none' },
       out: { type: 'string', default: './ramp-report' },
       format: { type: 'string', default: 'json' },
       chrome: { type: 'string' },
+      'no-sandbox': { type: 'boolean', default: false },
       timeout: { type: 'string', default: '60000' },
       quiet: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
@@ -90,18 +93,26 @@ const HELP = `ramp-scan — 全站爬掃 CLI
   --max-pages <n>    頁數上限（預設 50）
   --concurrency <n>  並行掃描頁數（預設 1＝循序；提高可加速，但降低禮貌性）
   --delay <ms>       每次請求前間隔，禮貌用（預設 250；設 0 關閉）
-  --include <regex>  只爬/掃符合的 URL
-  --exclude <regex>  跳過符合的 URL
+  --include <regex>  只掃符合的 URL（爬掃模式的「起始頁」一律會掃，篩選套用在爬到的連結）
+  --exclude <regex>  跳過符合的 URL（同上，起始頁不受此限）
   --url-list <file>  改掃清單中的 URL（.txt 每行一個，或 PolyMigrate url_inventory.csv）
 
 輸出／執行
   --level <A|AA|AAA> 目標檢測等級（預設 AA）
+  --fail-on <cond>   none｜violations（預設 none）：violations 時只要掃出違規即以離開碼 3 結束，供 CI 做門檻
   --out <dir>        報告輸出目錄（預設 ./ramp-report）
   --format <fmt>     輸出格式 json｜html｜both（預設 json）
   --chrome <path>    指定 Chrome（等同 CHROME_PATH）
+  --no-sandbox       以 --no-sandbox 啟動 Chrome（預設不關沙箱；容器/root 等跑不起來時才用，CI 環境自動附加）
   --timeout <ms>     單頁載入逾時（預設 60000）
   --quiet            只寫檔、不印摘要
   --help             顯示此說明
+
+離開碼
+  0  掃描完成（未觸發 --fail-on）
+  1  參數錯誤（旗標值、無效的 regex、清單為空、起始網址被 --include/--exclude 排除）
+  2  掃描錯誤（單頁模式掃描失敗；多頁模式「全部」頁面都失敗。部分頁面失敗仍為 0，失敗數見報告）
+  3  --fail-on 條件觸發
 `;
 
 // ===== Chrome 位置偵測（沿用 test/e2e/run-e2e.js 的邏輯）=====
@@ -113,6 +124,10 @@ function findChrome(override) {
     'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
     (process.env.LOCALAPPDATA || '') + '/Google/Chrome/Application/chrome.exe',
     '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ];
   const found = candidates.find((p) => p && fs.existsSync(p));
@@ -135,10 +150,13 @@ function normalizeUrl(raw) {
   // 先正規化 pathname 的尾斜線（含有 query 的網址也才能正確去重）
   if (u.pathname !== '/' && u.pathname.endsWith('/')) u.pathname = u.pathname.slice(0, -1);
   if (u.search) {
-    const kept = [...u.searchParams.entries()].filter(
+    const entries = [...u.searchParams.entries()];
+    const kept = entries.filter(
       ([k, v]) => !TRACKING_PREFIXES.some((p) => `${k}=${v}`.toLowerCase().startsWith(p)),
     );
-    u.search = new URLSearchParams(kept).toString();
+    // 只有真的剝掉參數才重組 query——URLSearchParams 重序列化會改變原始編碼
+    // （如空白→+），沒事別動人家的網址
+    if (kept.length !== entries.length) u.search = new URLSearchParams(kept).toString();
   }
   return u.toString();
 }
@@ -240,8 +258,12 @@ async function visitPage(browser, url, opts) {
   try {
     await page.setViewport({ width: 1366, height: 900 });
     await page.setUserAgent(
-      'Mozilla/5.0 (compatible; ramp-scan/0.2; +https://github.com/HSU-YU-MING/ramp-a11y)',
+      `Mozilla/5.0 (compatible; ramp-scan/${VERSION}; +https://github.com/HSU-YU-MING/ramp-a11y)`,
     );
+    // 以 addScriptTag 注入 axe 會被嚴格 CSP（script-src 'self' 等）擋下，
+    // 掃描失敗時只會看到「__rampA11yScan is not a function」這種無從排查的錯誤。
+    // CLI 是使用者主動對目標做檢測，繞過 CSP 屬合理工具行為（不影響被測頁的真實結果）。
+    await page.setBypassCSP(true);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: opts.timeout });
     const title = await page.title();
     for (const f of INJECT) {
@@ -266,7 +288,7 @@ async function visitPage(browser, url, opts) {
 // ===== 全站 BFS 爬取 =====
 async function crawlSite(browser, startUrl, opts, log) {
   const startHost = hostOf(startUrl);
-  const pass = makeFilter(opts.include, opts.exclude);
+  const pass = opts.pass; // 參數階段已編譯（無效 regex 在啟動瀏覽器前就以參數錯誤擋下）
   const start = normalizeUrl(startUrl);
   const enqueued = new Set([start]); // 已排入佇列（含未取出者），保證每個 URL 只訪問一次
   const queue = [{ url: start, depth: 0 }];
@@ -319,17 +341,43 @@ async function crawlSite(browser, startUrl, opts, log) {
 }
 
 // ===== URL 清單解析（相容 PolyMigrate url_inventory.csv）=====
-function parseUrlList(file) {
+
+/** 切一行 CSV：支援雙引號欄（欄內可含逗號、"" 跳脫）。天真 split(',')
+ *  會讓「任何欄含逗號」的整列靜默消失——PolyMigrate 盤點的 title 欄就常有。 */
+function splitCsvLine(line) {
+  const cells = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else inQ = false;
+      } else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') {
+      cells.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  cells.push(cur);
+  return cells;
+}
+
+/**
+ * 解析 URL 清單。被略過的行數與格式誤判一律透過 warn 出聲——
+ * 「靜默少掃幾頁」比報錯更糟（本專案反覆出現的失敗模式）。
+ */
+function parseUrlList(file, warn = () => {}) {
   let text = fs.readFileSync(file, 'utf8');
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return [];
-  const looksCsv = file.toLowerCase().endsWith('.csv') || /(^|,)source_url(,|$)/i.test(lines[0]);
-  if (!looksCsv) {
-    return lines.filter((l) => !l.startsWith('#')).map((l) => ({ url: l.trim(), lang: '' }));
-  }
-  // CSV：取 source_url 與 lang 欄。每格先 trim 並去除包住的雙引號——真實盤點常見
-  // 「source_url, lang」逗號後帶空白，若不 trim 會使 lang 欄對不到而讓逐語言功能靜默失效。
+  // 每格 trim 並去除包住的雙引號——真實盤點常見「source_url, lang」逗號後帶空白，
+  // 若不 trim 會使 lang 欄對不到而讓逐語言功能靜默失效。
   const cell = (s) =>
     s == null
       ? ''
@@ -337,19 +385,50 @@ function parseUrlList(file) {
           .trim()
           .replace(/^"(.*)"$/, '$1')
           .trim();
-  const header = lines[0].split(',').map((h) => cell(h).toLowerCase());
-  const urlIdx = Math.max(0, header.indexOf('source_url'));
+  const looksCsv =
+    file.toLowerCase().endsWith('.csv') || /(^|,)\s*"?source_url"?\s*(,|$)/i.test(lines[0]);
+  const header = looksCsv ? splitCsvLine(lines[0]).map((h) => cell(h).toLowerCase()) : null;
+  const hasHeader = looksCsv && header.includes('source_url');
+
+  // 純清單路徑：.txt，或「存成 .csv 但沒有 source_url 表頭」的純 URL 清單
+  // （後者過去會把第一行當表頭丟掉——純清單的第一筆就這樣靜默消失）。
+  if (!hasHeader) {
+    if (looksCsv) {
+      warn(`--url-list：${file} 的表頭沒有 source_url 欄，整份當純 URL 清單處理`);
+    }
+    let skipped = 0;
+    const entries = [];
+    for (const l of lines) {
+      const t = l.trim();
+      if (t.startsWith('#')) continue;
+      const u = looksCsv ? cell(splitCsvLine(t)[0]) : t;
+      if (/^https?:\/\//i.test(u)) entries.push({ url: u, lang: '' });
+      else skipped++;
+    }
+    if (skipped) warn(`--url-list：${skipped} 行不是 http(s) 網址，已略過`);
+    return entries;
+  }
+
+  // CSV 路徑：取 source_url 與 lang 欄
+  const urlIdx = header.indexOf('source_url');
   const langIdx = header.indexOf('lang');
-  return lines
-    .slice(1)
-    .map((l) => l.split(',').map(cell))
-    .filter((c) => /^https?:\/\//i.test(c[urlIdx] || ''))
-    .map((c) => ({ url: c[urlIdx], lang: langIdx >= 0 ? c[langIdx] || '' : '' }));
+  let skipped = 0;
+  const entries = [];
+  for (const l of lines.slice(1)) {
+    const c = splitCsvLine(l).map(cell);
+    if (/^https?:\/\//i.test(c[urlIdx] || '')) {
+      entries.push({ url: c[urlIdx], lang: langIdx >= 0 ? c[langIdx] || '' : '' });
+    } else skipped++;
+  }
+  if (skipped) warn(`--url-list：${skipped} 筆的 source_url 不是 http(s) 網址，已略過`);
+  return entries;
 }
 
 async function scanList(browser, entries, opts, log) {
-  const pass = makeFilter(opts.include, opts.exclude);
-  const targets = entries.filter((e) => pass(e.url)).slice(0, opts.maxPages);
+  // 篩選與截斷分開算：truncated 只在「通過篩選的筆數超過 maxPages」時為真，
+  // 否則被 --exclude 濾掉幾筆就會誤報「達上限截斷」
+  const passed = entries.filter((e) => opts.pass(e.url));
+  const targets = passed.slice(0, opts.maxPages);
   let failed = 0;
   let done = 0;
   // 固定清單 → 直接用 mapPool 並行；結果依清單順序回傳（可重現）
@@ -369,7 +448,7 @@ async function scanList(browser, entries, opts, log) {
       return { url, lang: lang || undefined, ok: false, error: e.message };
     }
   });
-  return { pages, failed, truncated: entries.length > targets.length };
+  return { pages, failed, truncated: passed.length > targets.length };
 }
 
 // ===== 目標等級 =====
@@ -697,8 +776,21 @@ async function main() {
     console.error(`--level 需為 A｜AA｜AAA；收到：${values.level}`);
     process.exit(1);
   }
+  if (!['none', 'violations'].includes(values['fail-on'])) {
+    console.error(`--fail-on 需為 none｜violations；收到：${values['fail-on']}`);
+    process.exit(1);
+  }
   if (urlList && url) {
     console.error(`提醒：已指定 --url-list，位置參數網址 ${url} 將被忽略`);
+  }
+  // --include/--exclude 在參數階段就編譯：無效 regex 是參數錯誤（exit 1），
+  // 不該等瀏覽器啟動後才以掃描錯誤（exit 2）炸出來
+  let pass;
+  try {
+    pass = makeFilter(values.include, values.exclude);
+  } catch (e) {
+    console.error(`--include/--exclude 不是有效的正規表示式：${e.message}`);
+    process.exit(1);
   }
   const fmtJson = values.format === 'json' || values.format === 'both';
   const fmtHtml = values.format === 'html' || values.format === 'both';
@@ -715,25 +807,43 @@ async function main() {
     maxPages: Math.max(1, Math.floor(num(values['max-pages'], 'max-pages'))),
     concurrency: Math.max(1, Math.floor(num(values.concurrency, 'concurrency'))),
     delay: num(values.delay, 'delay'),
-    include: values.include,
-    exclude: values.exclude,
+    pass,
     timeout: Math.max(1, num(values.timeout, 'timeout')),
     chrome: values.chrome,
   };
   const log = values.quiet ? () => {} : (m) => console.error(m);
-  const version = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
+  const version = VERSION;
   const started = Date.now();
 
+  // 模式判定
+  const multi = !!urlList || opts.depth >= 1;
+
+  // 啟動瀏覽器前先把「不用瀏覽器就能擋下」的錯誤擋完（清單為空、起始頁被排除），
+  // 免得白開一個 Chrome 又不經 finally 關閉
+  let listEntries = null;
+  if (urlList) {
+    listEntries = parseUrlList(urlList, (m) => console.error(`提醒：${m}`));
+    if (!listEntries.length) {
+      console.error(`--url-list 未解析出任何 URL：${urlList}`);
+      process.exit(1);
+    }
+  }
+  if (!multi && !pass(normalizeUrl(url))) {
+    console.error(`起始網址被 --include/--exclude 排除，沒有可掃描的頁面：${url}`);
+    process.exit(1);
+  }
+
+  // 沙箱預設保留；容器/root 等環境跑不起來時以 --no-sandbox 關閉（CI 自動附加，與 e2e 同慣例）
   const browser = await puppeteer.launch({
     executablePath: findChrome(opts.chrome),
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    args: [
+      '--disable-dev-shm-usage',
+      ...(values['no-sandbox'] || process.env.CI ? ['--no-sandbox'] : []),
+    ],
   });
 
   try {
-    // 模式判定
-    const multi = !!urlList || opts.depth >= 1;
-
     if (!multi) {
       // 單頁
       log(`掃描 ${url} …`);
@@ -750,7 +860,11 @@ async function main() {
       if (fmtJson) written.push(writeReport(values.out, base, out));
       if (fmtHtml) written.push(writeHtml(values.out, base, out.scannedAt, buildPageHtml(out)));
       if (!values.quiet) printPageSummary(out);
-      console.error(`\n報告已寫入：\n  ${written.join('\n  ')}`);
+      log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
+      if (values['fail-on'] === 'violations' && out.summary.violations > 0) {
+        console.error(`✘ --fail-on violations：掃出 ${out.summary.violations} 項違規（離開碼 3）`);
+        process.exitCode = 3;
+      }
       return;
     }
 
@@ -761,15 +875,10 @@ async function main() {
     if (urlList) {
       mode = 'url-list';
       source = urlList;
-      const entries = parseUrlList(urlList);
-      if (!entries.length) {
-        console.error(`--url-list 未解析出任何 URL：${urlList}`);
-        process.exit(1);
-      }
       log(
-        `從清單掃描 ${Math.min(entries.length, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
+        `從清單掃描 ${Math.min(listEntries.length, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
       );
-      result = await scanList(browser, entries, opts, log);
+      result = await scanList(browser, listEntries, opts, log);
     } else {
       mode = 'crawl';
       source = url;
@@ -802,7 +911,24 @@ async function main() {
     if (fmtJson) written.push(writeReport(values.out, base, site));
     if (fmtHtml) written.push(writeHtml(values.out, base, site.scannedAt, buildSiteHtml(site)));
     if (!values.quiet) printSiteSummary(site);
-    console.error(`\n報告已寫入：\n  ${written.join('\n  ')}`);
+    log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
+
+    // 離開碼契約（見 --help）：全部頁面都失敗 → 2；--fail-on violations 掃出違規 → 3；
+    // 部分頁面失敗仍為 0（報告有記 pagesFailed），避免大站零星逾時把 CI 弄紅
+    const okPages = result.pages.filter((p) => p.ok !== false);
+    if (result.pages.length > 0 && okPages.length === 0) {
+      console.error(
+        `✘ 全部 ${result.pages.length} 頁掃描失敗（離開碼 2），請檢查網路、CSP 或 --timeout`,
+      );
+      process.exitCode = 2;
+    } else if (
+      values['fail-on'] === 'violations' &&
+      okPages.some((p) => p.summary.violations > 0)
+    ) {
+      const n = okPages.filter((p) => p.summary.violations > 0).length;
+      console.error(`✘ --fail-on violations：${n} 頁掃出違規（離開碼 3）`);
+      process.exitCode = 3;
+    }
   } finally {
     await browser.close();
   }
@@ -822,6 +948,7 @@ module.exports = {
   hostOf,
   makeFilter,
   translateRule,
+  splitCsvLine,
   parseUrlList,
   aggregate,
   targetSplit,

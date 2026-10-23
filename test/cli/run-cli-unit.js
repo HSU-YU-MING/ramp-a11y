@@ -69,6 +69,68 @@ const parsedTxt = cli.parseUrlList(txt);
 eq('parseUrlList txt 略過註解、取 URL', parsedTxt.length, 2);
 eq('parseUrlList txt lang 空', parsedTxt[0].lang, '');
 
+// ===== 2026-10 稽核的「靜默掉筆」回歸 =====
+
+// splitCsvLine：引號欄含逗號、"" 跳脫（天真 split(',') 會讓整列消失）
+eq(
+  'splitCsvLine 引號欄含逗號',
+  cli.splitCsvLine('"Hello, world",https://x.com/a,ch').join('|'),
+  'Hello, world|https://x.com/a|ch',
+);
+eq('splitCsvLine 雙引號跳脫', cli.splitCsvLine('"a""b",c')[0], 'a"b');
+
+// 純 URL 清單存成 .csv（無 source_url 表頭）：過去第一行被當表頭丟掉
+const noHeader = path.join(tmp, 'plain-urls.csv');
+fs.writeFileSync(noHeader, 'https://x.com/1\nhttps://x.com/2\nhttps://x.com/3\n');
+const warnsA = [];
+const parsedNoHeader = cli.parseUrlList(noHeader, (m) => warnsA.push(m));
+eq('parseUrlList 無表頭 .csv 不掉第一筆', parsedNoHeader.length, 3);
+eq('parseUrlList 無表頭 .csv 第一筆正確', parsedNoHeader[0].url, 'https://x.com/1');
+check('parseUrlList 無表頭 .csv 會出聲', warnsA.length >= 1, warnsA.join('；'));
+
+// CSV 引號欄含逗號：過去欄位錯位後整列被 http 檢查靜默濾掉
+const quoted = path.join(tmp, 'quoted.csv');
+fs.writeFileSync(quoted, 'title,source_url,lang\n"Hello, world",https://x.com/a,ch\n');
+const parsedQ = cli.parseUrlList(quoted);
+eq('parseUrlList 引號欄含逗號不掉列', parsedQ.length, 1);
+eq('parseUrlList 引號欄含逗號取對 url', parsedQ[0] && parsedQ[0].url, 'https://x.com/a');
+eq('parseUrlList 引號欄含逗號取對 lang', parsedQ[0] && parsedQ[0].lang, 'ch');
+
+// .txt：行首空白的註解也要略過、非 URL 行出聲略過
+const txt2 = path.join(tmp, 'urls2.txt');
+fs.writeFileSync(txt2, '  # 行首空白的註解\nhttps://x.com/9\nnot-a-url\n');
+const warnsB = [];
+const parsedTxt2 = cli.parseUrlList(txt2, (m) => warnsB.push(m));
+eq('parseUrlList txt 行首空白註解＋非 URL 行', parsedTxt2.length, 1);
+check('parseUrlList txt 非 URL 行會出聲', warnsB.length >= 1, warnsB.join('；'));
+
+// makeFilter：無效 regex 必須 throw（main 在參數階段接住、exit 1）
+check(
+  'makeFilter 無效 regex 會 throw',
+  (() => {
+    try {
+      cli.makeFilter('[', null);
+      return false;
+    } catch {
+      return true;
+    }
+  })(),
+);
+const filt = cli.makeFilter('blog', 'draft');
+check(
+  'makeFilter include+exclude 行為',
+  filt('https://x.com/blog/a') === true &&
+    filt('https://x.com/blog/draft') === false &&
+    filt('https://x.com/news') === false,
+);
+
+// normalizeUrl：沒剝追蹤參數就不重組 query（重組會改變原始編碼，空白→+）
+eq(
+  'normalizeUrl 無追蹤參數時保留原編碼',
+  cli.normalizeUrl('https://x.com/a?q=a%20b'),
+  'https://x.com/a?q=a%20b',
+);
+
 // ===== aggregate =====
 const pages = [
   {
