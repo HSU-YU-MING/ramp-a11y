@@ -54,7 +54,7 @@
 
 - `activeTab`：使用者主動點擊圖示時，才臨時取得當前分頁的存取權
 - `scripting`：注入 axe-core 與掃描腳本
-- `storage`：session storage 快取掃描結果（關閉瀏覽器即清除）；local storage 保存偏好設定與人工複核自評（自評以檢測過的網址為鍵、持久保存，可自行於擴充功能管理頁清除）
+- `storage`：session storage 快取掃描結果（關閉瀏覽器即清除）；local storage 保存偏好設定與人工複核自評（自評以檢測過的網址為鍵、持久保存，最多保留最近 200 個網址；移除擴充功能即一併清除）
 
 所有資料只存在你的瀏覽器本機，所有檢測都在本機完成，不傳送任何資料到外部伺服器。
 
@@ -148,7 +148,8 @@ curl -sL -o vendor/axe.min.js https://cdn.jsdelivr.net/npm/axe-core@4.10.3/axe.m
 
 # 2. 官方 zh_TW 語言包，包裝成注入用 JS（在 axe.min.js 之後注入）
 curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales/zh_TW.json
-{ printf 'if (window.axe) {\n  window.axe.configure({\n    locale: '; cat /tmp/zh_TW.json; printf '\n  });\n}\n'; } > vendor/axe-locale-zh_TW.js
+#    檔頭必須帶 Deque 著作權與 MPL-2.0 聲明（散布 MPL 檔案的要求），版本號隨升級一起改
+{ printf '/*! axe-core 4.10.3 locales/zh_TW.json\n * Copyright (c) 2015 - 2025 Deque Systems, Inc.\n *\n * Your use of this Source Code Form is subject to the terms of the Mozilla Public\n * License, v. 2.0. If a copy of the MPL was not distributed with this\n * file, You can obtain one at http://mozilla.org/MPL/2.0/.\n *\n * 由 axe-core 的 locales/zh_TW.json 包上 window.axe.configure(...) 載入外殼而成\n * （語言內容未修改；產生方式見 README〈vendor 檔案的取得與更新〉）。\n * 需在 axe.min.js 之後注入：將 axe 內建規則說明切換為繁體中文，\n * 使未在 rules-map.json 對應表中的規則也能以繁中顯示。\n */\n'; printf 'if (window.axe) {\n  window.axe.configure({\n    locale: '; cat /tmp/zh_TW.json; printf '\n  });\n}\n'; } > vendor/axe-locale-zh_TW.js
 ```
 
 ## 開發與測試
@@ -159,9 +160,9 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
-npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：65 項
+npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：128 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
-npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：44 項
+npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：76 項
 npm run test:docs    # README 數字守門（測試項目數／檢測碼條數／axe 版本，比對真正的來源）
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：54 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
@@ -246,12 +247,15 @@ npm run scan -- --url-list url_inventory.csv --format html
 
 主要選項：`--depth`／`--max-pages`／`--concurrency`（並行加速，預設 1 循序）／`--delay`
 （禮貌間隔）／`--include`／`--exclude`（篩選爬到的連結與清單；爬掃模式的**起始頁一律會掃**）／
-`--url-list`／`--level`（分「目標內／超出目標」）／`--fail-on violations`（掃出違規即以離開碼 3
-結束，供 CI 做門檻）／`--out`／`--format json｜html｜both`／`--chrome`／`--no-sandbox`（預設保留
-Chrome 沙箱；容器等環境跑不起來時才開）／`--timeout`。輸出為結構化 JSON 與沿用擴充套件風格的
-自包含 HTML 報告（全站摘要＋逐語言＋最常見障礙＋逐頁明細）。
+`--url-list`／`--level`（分「目標內／超出目標」）／`--fail-on violations`（掃出 **`--level` 目標內、
+已對應台灣準則**的違規即以離開碼 3 結束，供 CI 做門檻；超出目標等級、未對應台灣準則與最佳實務
+建議都不算）／`--out`／`--format json｜html｜both`／`--chrome`／`--no-sandbox`（預設保留
+Chrome 沙箱；容器等環境跑不起來時才開。環境變數 `CI` 為真值時自動附加，`CI=false`／`0` 不算）／
+`--timeout`。輸出為結構化 JSON 與沿用擴充套件風格的自包含 HTML 報告（全站摘要＋逐語言＋最常見
+障礙＋逐頁明細）。
 
-離開碼契約（`--help` 有完整版）：`0` 掃描完成、`1` 參數錯誤、`2` 掃描錯誤（單頁模式失敗，
+離開碼契約（`--help` 有完整版）：`0` 掃描完成、`1` 參數錯誤（不認得的旗標、值不合法、清單檔
+不存在或為空、起始網址或清單全部被篩掉——都在啟動瀏覽器前擋下）、`2` 掃描錯誤（單頁模式失敗，
 或多頁模式**全部**頁面失敗；部分失敗仍為 0，失敗數記在報告）、`3` `--fail-on` 觸發。
 搭配 `--fail-on violations`，JSON 輸出與離開碼即可直接接進 CI pipeline。
 

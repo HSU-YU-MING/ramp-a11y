@@ -71,7 +71,7 @@ npm i -g cornhsu-ramp-scan && ramp-scan https://example.com        # or install 
 npm run scan -- --url-list url_inventory.csv --format html         # from a repo checkout
 ```
 
-It emits structured **JSON** and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). For CI, pass `--fail-on violations` to exit with code 3 when any violation is found. Exit codes: `0` scan completed, `1` usage error, `2` scan error (single-page failure, or **all** pages failed in multi-page mode; partial failures stay 0 and are recorded in the report), `3` `--fail-on` triggered — see `--help`. `--include`/`--exclude` filter discovered links and list entries (the crawl **start page is always scanned**); Chrome's sandbox is kept by default (`--no-sandbox` to opt out in containers). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.
+It emits structured **JSON** and a self-contained **HTML** report styled like the extension's export (site summary → most common barriers → per-page detail). For CI, pass `--fail-on violations` to exit with code 3 when a violation **within the `--level` target and mapped to a Taiwan criterion** is found (beyond-target, unmapped and best-practice findings don't count). Exit codes: `0` scan completed, `1` usage error (unknown flag, bad value, missing or empty list file, start URL or whole list filtered out — all caught before Chrome launches), `2` scan error (single-page failure, or **all** pages failed in multi-page mode; partial failures stay 0 and are recorded in the report), `3` `--fail-on` triggered — see `--help`. `--include`/`--exclude` filter discovered links and list entries (the crawl **start page is always scanned**); Chrome's sandbox is kept by default (`--no-sandbox` to opt out in containers; added automatically when the `CI` env var is truthy — `CI=false`/`0` doesn't count). This turns a dev-time single-page pre-check into an automatable, whole-site localized audit — the piece that lets Ramp slot into a delivery pipeline.
 
 **Composes with [PolyMigrate](https://github.com/HSU-YU-MING/cornhsu-polymigrate).** `--url-list` reads the `url_inventory.csv` produced by PolyMigrate (my i18n-first static-site migrator); when the list carries a `lang` column, Ramp additionally reports accessibility **per language** — so a migrated multilingual site can be audited for its Chinese and English versions separately (e.g. the zh page failing rules the en page doesn't). Two tools, one workflow: migrate the multilingual site, then audit each language's accessibility.
 
@@ -83,7 +83,7 @@ Ramp does **not** request persistent all-sites access. It uses only:
 
 - `activeTab` — temporary access to the current tab, granted only when you click the icon.
 - `scripting` — to inject axe-core and the scanner.
-- `storage` — session cache of scan results (cleared when the browser closes), plus local storage for preferences and per-URL manual-review self-assessments (persistent; clear anytime from the extensions page).
+- `storage` — session cache of scan results (cleared when the browser closes), plus local storage for preferences and per-URL manual-review self-assessments (persistent, keeping the 200 most recent URLs; removed together with the extension).
 
 Everything stays in your browser — all analysis runs locally and no data is sent to any server.
 
@@ -100,9 +100,9 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 65 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 128 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
-npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 44 checks
+npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 76 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
 npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 54 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)

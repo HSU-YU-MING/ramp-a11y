@@ -47,6 +47,10 @@ manifest，必填且必須高於線上版，沒辦法從 tag 推導）。**`rele
    有專屬迴歸測試：`test/xss-fixture.html` + e2e 的 F 組。**任何新的
    「把頁面文字塞進 HTML 樣板」的地方都要走它**——這是結構性防呆，不是一次性修補。
 
+第 1–4 條有 test:unit 守門（manifest 權限必須恰好是這三個、沒有 host_permissions／
+optional_host_permissions／content_scripts、擴充端除了讀自家 rules-map.json 之外不得有
+fetch／XHR／WebSocket／遠端 script）。**那支測試紅了不要改測試，先問為什麼要破例。**
+
 儲存的內容也在這個承諾裡：`storage.local` 只有偏好設定（`prefs`）與人工複核自評
 （`review::<url>`），`storage.session` 只有掃描結果快取（`scan_<tabId>`，關瀏覽器即清）。
 `minimum_chrome_version: 102` 就是 `storage.session` 的需求，不要隨手降。
@@ -74,8 +78,11 @@ CLI（`cli/ramp-scan.js`）**當然會對使用者指定的目標網站送真實
 四個 view 靠 `hidden` 屬性切換。瀏覽器預設的 `[hidden]{display:none}` 會被 `.view-center`
 之類的 display 宣告蓋掉，結果是**四種狀態同時顯示**。這個 bug 在 `c7de72f` 修過一次。
 
-`popup.html` 底部兩支 script 順序也不能反：`shared/report-core.js` 必須在 `popup.js` 之前，
-`popup.js` 直接解構 `window.RampShared`。
+`popup.html` 底部三支 script 順序也不能反：`shared/report-core.js`、`shared/popup-logic.js`
+都必須在 `popup.js` 之前，`popup.js` 直接解構 `window.RampShared` 與 `window.RampPopupLogic`。
+popup 的**純邏輯**（受保護網址判定、播報簽章、等級計數、自評存檔決策與 200 筆上限）放在
+`shared/popup-logic.js` 才測得到——`popup.js` 綁著 chrome.* 與 DOM，沒有單元測試。新增判斷式時
+往那邊放。
 
 ### 中文樣板字串裡的全形空白（U+3000）是刻意的
 

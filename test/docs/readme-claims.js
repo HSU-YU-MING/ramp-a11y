@@ -180,9 +180,17 @@ function main() {
   // --- 2.5 對應表的規則必須真的存在於打包的 axe ---
   // 幽靈規則（對應表有、axe 沒有）永遠不會觸發，README 的涵蓋宣稱會靜默灌水。
   // 文件性條目（docOnly: true，如 2.4.7 focus-visible）是刻意保留的規範對照，豁免。
+  // 用 jsdom 真的載入 vendor 的 axe、取 axe.getRules() 的規則集合——過去用字串比對，
+  // 「heading」「table」這類常見字在 axe.min.js 裡到處都是，幽靈規則取這種名字就測不出來。
+  // jsdom 只在 main() 內載入：本檔被 run-e2e.js require 時不得有副作用
   const axeSrcEarly = fs.readFileSync(path.join(REPO, 'vendor/axe.min.js'), 'utf8');
+  const { JSDOM } = require('jsdom');
+  const axeDom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' });
+  axeDom.window.eval(axeSrcEarly);
+  const realRuleIds = new Set(axeDom.window.axe.getRules().map((r) => r.ruleId));
+  axeDom.window.close();
   const ghosts = rulesMap
-    .filter((r) => !r.docOnly && !axeSrcEarly.includes(`"${r.axeRuleId}"`))
+    .filter((r) => !r.docOnly && !realRuleIds.has(r.axeRuleId))
     .map((r) => r.axeRuleId);
   check(
     '對應表規則皆存在於 vendor axe（docOnly 除外）',
@@ -198,14 +206,20 @@ function main() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const puppeteerPkgPath = path.join(REPO, 'node_modules/puppeteer-core/package.json');
   if (fs.existsSync(puppeteerPkgPath)) {
+    const gte = (a, b) =>
+      a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] >= b[2];
+    // 範圍的「最低可裝版本」：取範圍裡所有版本號的最小值（`^20.19 || >=22.12` → 20.19；
+    // `>=18` 這種省略寫法補 0）
     const minOf = (range) => {
-      const m = String(range || '').match(/(\d+)\.(\d+)\.(\d+)/);
-      return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+      const vs = [...String(range || '').matchAll(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/g)].map((m) => [
+        Number(m[1]),
+        Number(m[2] || 0),
+        Number(m[3] || 0),
+      ]);
+      return vs.length ? vs.reduce((lo, v) => (gte(lo, v) ? v : lo)) : null;
     };
     const ours = minOf(pkg.engines && pkg.engines.node);
     const theirs = minOf(JSON.parse(fs.readFileSync(puppeteerPkgPath, 'utf8')).engines?.node);
-    const gte = (a, b) =>
-      a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] >= b[2];
     check(
       'engines.node 下限 ≥ puppeteer-core 的需求',
       Boolean(ours && theirs && gte(ours, theirs)),

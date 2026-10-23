@@ -46,9 +46,11 @@ review, which typically takes days and cannot be guaranteed.
 - CLI（`ramp-scan`）會**對你指定的網站送出實際 HTTP 請求**。掃描對象的授權
   由使用者自負，見 README 的〈使用倫理〉。
 - CLI 為了注入檢測腳本，會在「被掃的頁面」上繞過該頁的 CSP
-  （Puppeteer `setBypassCSP`，僅影響檢測工作階段，不影響被測網站本身）。
+  （Puppeteer `setBypassCSP`，僅影響檢測工作階段，不影響被測網站本身）。代價：原本會被
+  該頁 CSP 擋下的頁面腳本，在檢測工作階段裡也會執行，掃到的 DOM 可能與一般使用者看到的
+  略有不同。
 - CLI 預設**保留 Chrome 沙箱**；`--no-sandbox` 需由使用者明示開啟
-  （容器／root 等跑不起來的環境用；CI 環境變數存在時自動附加，與 e2e 同慣例）。
+  （容器／root 等跑不起來的環境用；環境變數 CI 為真值時自動附加，CI=false／0 不算）。
 - 產出的 HTML 報告會包含目標頁面的字串片段（元素選擇器、文字內容）。這些
   內容一律經 `escapeHtml` 逸出；若你找到可繞過的情形，那正是我們要收的回報。
 - 檢測引擎 axe-core 以本地檔案打包於 `vendor/`（MV3 CSP 不允許遠端載入），
