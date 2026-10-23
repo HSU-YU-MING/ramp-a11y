@@ -56,6 +56,7 @@ async function mapPool(items, concurrency, fn) {
 
 // ===== 參數解析 =====
 function parseCliArgs(argv) {
+  // 不認得的旗標、旗標缺值會讓 parseArgs 丟例外——由呼叫端轉成參數錯誤（exit 1）
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -99,18 +100,22 @@ const HELP = `ramp-scan — 全站爬掃 CLI
 
 輸出／執行
   --level <A|AA|AAA> 目標檢測等級（預設 AA）
-  --fail-on <cond>   none｜violations（預設 none）：violations 時只要掃出違規即以離開碼 3 結束，供 CI 做門檻
+  --fail-on <cond>   none｜violations（預設 none）：violations 時，掃出「--level 目標內、已對應
+                     台灣準則」的違規即以離開碼 3 結束，供 CI 做門檻（超出目標等級、未對應
+                     台灣準則、最佳實務建議都不算）
   --out <dir>        報告輸出目錄（預設 ./ramp-report）
   --format <fmt>     輸出格式 json｜html｜both（預設 json）
   --chrome <path>    指定 Chrome（等同 CHROME_PATH）
-  --no-sandbox       以 --no-sandbox 啟動 Chrome（預設不關沙箱；容器/root 等跑不起來時才用，CI 環境自動附加）
+  --no-sandbox       以 --no-sandbox 啟動 Chrome（預設不關沙箱；容器/root 等跑不起來時才用；
+                     環境變數 CI 為真值時自動附加，CI=false／0 不算）
   --timeout <ms>     單頁載入逾時（預設 60000）
   --quiet            只寫檔、不印摘要
   --help             顯示此說明
 
 離開碼
   0  掃描完成（未觸發 --fail-on）
-  1  參數錯誤（旗標值、無效的 regex、清單為空、起始網址被 --include/--exclude 排除）
+  1  參數錯誤（不認得的旗標、旗標缺值或值不合法、無效的 regex、清單檔不存在或為空、
+     起始網址或清單全部被 --include/--exclude 排除）
   2  掃描錯誤（單頁模式掃描失敗；多頁模式「全部」頁面都失敗。部分頁面失敗仍為 0，失敗數見報告）
   3  --fail-on 條件觸發
 `;
@@ -150,13 +155,13 @@ function normalizeUrl(raw) {
   // 先正規化 pathname 的尾斜線（含有 query 的網址也才能正確去重）
   if (u.pathname !== '/' && u.pathname.endsWith('/')) u.pathname = u.pathname.slice(0, -1);
   if (u.search) {
-    const entries = [...u.searchParams.entries()];
-    const kept = entries.filter(
-      ([k, v]) => !TRACKING_PREFIXES.some((p) => `${k}=${v}`.toLowerCase().startsWith(p)),
+    // 直接在原始 query 字串上逐段過濾，不經 URLSearchParams 重組——重序列化會改變原始
+    // 編碼（%20→+ 等），剝掉追蹤參數時其餘參數也該原封不動
+    const segs = u.search.slice(1).split('&');
+    const kept = segs.filter(
+      (s) => s && !TRACKING_PREFIXES.some((p) => s.toLowerCase().startsWith(p)),
     );
-    // 只有真的剝掉參數才重組 query——URLSearchParams 重序列化會改變原始編碼
-    // （如空白→+），沒事別動人家的網址
-    if (kept.length !== entries.length) u.search = new URLSearchParams(kept).toString();
+    if (kept.length !== segs.length) u.search = kept.length ? '?' + kept.join('&') : '';
   }
   return u.toString();
 }
@@ -262,7 +267,9 @@ async function visitPage(browser, url, opts) {
     );
     // 以 addScriptTag 注入 axe 會被嚴格 CSP（script-src 'self' 等）擋下，
     // 掃描失敗時只會看到「__rampA11yScan is not a function」這種無從排查的錯誤。
-    // CLI 是使用者主動對目標做檢測，繞過 CSP 屬合理工具行為（不影響被測頁的真實結果）。
+    // CLI 是使用者主動對目標做檢測，繞過 CSP 屬合理工具行為。代價：原本會被頁面 CSP
+    // 擋下的頁面腳本在掃描工作階段裡也會執行，DOM 可能與真實使用者看到的略有不同
+    //（SECURITY.md 已揭露）。
     await page.setBypassCSP(true);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: opts.timeout });
     const title = await page.title();
@@ -312,7 +319,7 @@ async function crawlSite(browser, startUrl, opts, log) {
       const { url, depth } = item;
       try {
         if (opts.delay) await sleep(opts.delay);
-        const { report, links } = await visitPage(browser, url, opts);
+        const { report, links } = await (opts.visit || visitPage)(browser, url, opts);
         report.depth = depth;
         report.ok = true;
         pages.push(report);
@@ -401,7 +408,9 @@ function parseUrlList(file, warn = () => {}) {
     for (const l of lines) {
       const t = l.trim();
       if (t.startsWith('#')) continue;
-      const u = looksCsv ? cell(splitCsvLine(t)[0]) : t;
+      // .txt 的行尾註解（「網址 # 備註」）：URL 裡的 # 是 fragment 不會前接空白，
+      // 所以只認「空白 + #」
+      const u = looksCsv ? cell(splitCsvLine(t)[0]) : t.replace(/\s+#.*$/, '');
       if (/^https?:\/\//i.test(u)) entries.push({ url: u, lang: '' });
       else skipped++;
     }
@@ -435,7 +444,7 @@ async function scanList(browser, entries, opts, log) {
   const pages = await mapPool(targets, opts.concurrency, async ({ url, lang }) => {
     if (opts.delay) await sleep(opts.delay);
     try {
-      const { report } = await visitPage(browser, normalizeUrl(url), opts);
+      const { report } = await (opts.visit || visitPage)(browser, normalizeUrl(url), opts);
       report.lang = lang || undefined;
       report.ok = true;
       log(
@@ -463,6 +472,37 @@ function targetSplit(byLevel, targetLevel) {
     else beyond += byLevel[lv] || 0;
   });
   return { within, beyond };
+}
+
+// ===== 離開碼與啟動參數的決策（純函式，test:cli 直接驗證；main 只負責套用）=====
+
+/** --fail-on violations 是否觸發：只看「目標等級內、已對應台灣準則」的違規——
+ *  --level A 的 CI 不該因為 AAA、未對應（如台灣尚未採用的 WCAG 2.2）或最佳實務而變紅 */
+function failOnTriggered(byLevel, failOn, targetLevel) {
+  return failOn === 'violations' && targetSplit(byLevel || {}, targetLevel).within > 0;
+}
+
+/** 單頁模式的離開碼（掃描失敗由 main 的 catch 給 2） */
+function singlePageExitCode(summary, failOn, targetLevel) {
+  return failOnTriggered(summary.byLevel, failOn, targetLevel) ? 3 : 0;
+}
+
+/** 多頁模式的離開碼：全部頁面失敗 → 2；觸發 --fail-on → 3；其餘（含部分失敗）→ 0 */
+function multiPageExitCode(pages, failOn, targetLevel) {
+  const ok = pages.filter((p) => p.ok !== false);
+  if (pages.length > 0 && ok.length === 0) return 2;
+  if (ok.some((p) => failOnTriggered(p.summary.byLevel, failOn, targetLevel))) return 3;
+  return 0;
+}
+
+/** 環境變數是否為真值（CI=false／0／空字串不算——CI 平台以外的人也可能隨手設成 false） */
+function isTruthyEnv(v) {
+  return v != null && !/^(|0|false|no|off)$/i.test(String(v).trim());
+}
+
+/** Chrome 啟動參數：沙箱預設保留；--no-sandbox 旗標或 CI 環境才關（與 e2e 同慣例） */
+function chromeLaunchArgs(noSandbox, env) {
+  return ['--disable-dev-shm-usage', ...(noSandbox || isTruthyEnv(env.CI) ? ['--no-sandbox'] : [])];
 }
 
 // ===== 彙整 =====
@@ -762,7 +802,15 @@ function safeHost(url) {
 
 // ===== 進入點 =====
 async function main() {
-  const { values, url } = parseCliArgs(process.argv.slice(2));
+  let parsed;
+  try {
+    parsed = parseCliArgs(process.argv.slice(2));
+  } catch (e) {
+    // 不認得的旗標、旗標缺值：參數錯誤（exit 1），不是掃描錯誤
+    console.error(`參數錯誤：${e.message}（--help 看用法）`);
+    process.exit(1);
+  }
+  const { values, url } = parsed;
   const urlList = values['url-list'];
   if (values.help || (!url && !urlList)) {
     console.log(HELP);
@@ -794,21 +842,23 @@ async function main() {
   }
   const fmtJson = values.format === 'json' || values.format === 'both';
   const fmtHtml = values.format === 'html' || values.format === 'both';
-  const num = (v, name) => {
+  // 數值旗標：值不合法一律 exit 1，不靜默夾值——--timeout 0 過去被夾成 1 毫秒，
+  // 結果每頁都逾時失敗卻不算參數錯誤；--max-pages 0 被夾成 1 也沒說
+  const num = (v, name, min) => {
     const n = Number(v);
-    if (!Number.isFinite(n) || n < 0) {
-      console.error(`--${name} 需為非負數；收到：${v}`);
+    if (!Number.isFinite(n) || n < min) {
+      console.error(`--${name} 需為 ≥ ${min} 的數字；收到：${v}`);
       process.exit(1);
     }
     return n;
   };
   const opts = {
-    depth: Math.floor(num(values.depth, 'depth')),
-    maxPages: Math.max(1, Math.floor(num(values['max-pages'], 'max-pages'))),
-    concurrency: Math.max(1, Math.floor(num(values.concurrency, 'concurrency'))),
-    delay: num(values.delay, 'delay'),
+    depth: Math.floor(num(values.depth, 'depth', 0)),
+    maxPages: Math.floor(num(values['max-pages'], 'max-pages', 1)),
+    concurrency: Math.floor(num(values.concurrency, 'concurrency', 1)),
+    delay: num(values.delay, 'delay', 0),
     pass,
-    timeout: Math.max(1, num(values.timeout, 'timeout')),
+    timeout: num(values.timeout, 'timeout', 1000),
     chrome: values.chrome,
   };
   const log = values.quiet ? () => {} : (m) => console.error(m);
@@ -818,13 +868,24 @@ async function main() {
   // 模式判定
   const multi = !!urlList || opts.depth >= 1;
 
-  // 啟動瀏覽器前先把「不用瀏覽器就能擋下」的錯誤擋完（清單為空、起始頁被排除），
-  // 免得白開一個 Chrome 又不經 finally 關閉
+  // 啟動瀏覽器前先把「不用瀏覽器就能擋下」的錯誤擋完（清單檔不存在／為空、起始頁或
+  // 清單全部被排除），免得白開一個 Chrome 又不經 finally 關閉
   let listEntries = null;
   if (urlList) {
+    if (!fs.existsSync(urlList)) {
+      console.error(`--url-list 檔案不存在：${urlList}`);
+      process.exit(1);
+    }
     listEntries = parseUrlList(urlList, (m) => console.error(`提醒：${m}`));
     if (!listEntries.length) {
       console.error(`--url-list 未解析出任何 URL：${urlList}`);
+      process.exit(1);
+    }
+    // 全部被篩掉：過去會「掃 0 頁、exit 0」——搭配 --fail-on 的 CI 什麼都沒掃卻是綠燈
+    if (!listEntries.some((e) => pass(e.url))) {
+      console.error(
+        `--url-list 的 ${listEntries.length} 筆全部被 --include/--exclude 排除，沒有可掃描的頁面`,
+      );
       process.exit(1);
     }
   }
@@ -833,14 +894,10 @@ async function main() {
     process.exit(1);
   }
 
-  // 沙箱預設保留；容器/root 等環境跑不起來時以 --no-sandbox 關閉（CI 自動附加，與 e2e 同慣例）
   const browser = await puppeteer.launch({
     executablePath: findChrome(opts.chrome),
     headless: true,
-    args: [
-      '--disable-dev-shm-usage',
-      ...(values['no-sandbox'] || process.env.CI ? ['--no-sandbox'] : []),
-    ],
+    args: chromeLaunchArgs(values['no-sandbox'], process.env),
   });
 
   try {
@@ -861,10 +918,12 @@ async function main() {
       if (fmtHtml) written.push(writeHtml(values.out, base, out.scannedAt, buildPageHtml(out)));
       if (!values.quiet) printPageSummary(out);
       log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
-      if (values['fail-on'] === 'violations' && out.summary.violations > 0) {
-        console.error(`✘ --fail-on violations：掃出 ${out.summary.violations} 項違規（離開碼 3）`);
-        process.exitCode = 3;
+      const code = singlePageExitCode(out.summary, values['fail-on'], values.level);
+      if (code === 3) {
+        const n = targetSplit(out.summary.byLevel, values.level).within;
+        console.error(`✘ --fail-on violations：目標 ${values.level} 內有 ${n} 項違規（離開碼 3）`);
       }
+      process.exitCode = code;
       return;
     }
 
@@ -875,8 +934,9 @@ async function main() {
     if (urlList) {
       mode = 'url-list';
       source = urlList;
+      const passedCount = listEntries.filter((e) => pass(e.url)).length;
       log(
-        `從清單掃描 ${Math.min(listEntries.length, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
+        `從清單掃描 ${Math.min(passedCount, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
       );
       result = await scanList(browser, listEntries, opts, log);
     } else {
@@ -913,22 +973,20 @@ async function main() {
     if (!values.quiet) printSiteSummary(site);
     log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
 
-    // 離開碼契約（見 --help）：全部頁面都失敗 → 2；--fail-on violations 掃出違規 → 3；
-    // 部分頁面失敗仍為 0（報告有記 pagesFailed），避免大站零星逾時把 CI 弄紅
-    const okPages = result.pages.filter((p) => p.ok !== false);
-    if (result.pages.length > 0 && okPages.length === 0) {
+    // 離開碼契約（見 --help 與 multiPageExitCode）：部分頁面失敗仍為 0（報告有記
+    // pagesFailed），避免大站零星逾時把 CI 弄紅
+    const code = multiPageExitCode(result.pages, values['fail-on'], values.level);
+    if (code === 2) {
       console.error(
         `✘ 全部 ${result.pages.length} 頁掃描失敗（離開碼 2），請檢查網路、CSP 或 --timeout`,
       );
-      process.exitCode = 2;
-    } else if (
-      values['fail-on'] === 'violations' &&
-      okPages.some((p) => p.summary.violations > 0)
-    ) {
-      const n = okPages.filter((p) => p.summary.violations > 0).length;
-      console.error(`✘ --fail-on violations：${n} 頁掃出違規（離開碼 3）`);
-      process.exitCode = 3;
+    } else if (code === 3) {
+      const n = result.pages.filter(
+        (p) => p.ok !== false && failOnTriggered(p.summary.byLevel, 'violations', values.level),
+      ).length;
+      console.error(`✘ --fail-on violations：${n} 頁有目標 ${values.level} 內的違規（離開碼 3）`);
     }
+    process.exitCode = code;
   } finally {
     await browser.close();
   }
@@ -955,4 +1013,11 @@ module.exports = {
   mapPool,
   buildSiteHtml,
   buildPageHtml,
+  failOnTriggered,
+  singlePageExitCode,
+  multiPageExitCode,
+  isTruthyEnv,
+  chromeLaunchArgs,
+  visitPage,
+  scanList,
 };

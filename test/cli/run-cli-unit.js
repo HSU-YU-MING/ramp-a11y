@@ -190,6 +190,108 @@ eq('targetSplit AA → 目標內', cli.targetSplit(bl, 'AA').within, 3);
 eq('targetSplit AA → 超出', cli.targetSplit(bl, 'AA').beyond, 3);
 eq('targetSplit AAA → 超出恆為 0', cli.targetSplit(bl, 'AAA').beyond, 0);
 
+// ===== 2026-10 第二輪複驗補的回歸 =====
+
+// normalizeUrl：剝掉追蹤參數時，其餘參數的原始編碼也要原封不動（過去 %20 → +）
+eq(
+  'normalizeUrl 剝追蹤參數時保留其餘參數編碼',
+  cli.normalizeUrl('https://x.example/p/?utm_source=x&q=a%20b'),
+  'https://x.example/p?q=a%20b',
+);
+eq(
+  'normalizeUrl 只有追蹤參數 → 整段 query 拿掉',
+  cli.normalizeUrl('https://x.example/p?utm_source=x&fbclid=1'),
+  'https://x.example/p',
+);
+
+// .txt 行尾註解
+const txt3 = path.join(tmp, 'urls3.txt');
+fs.writeFileSync(txt3, 'https://x.com/a   # 首頁\nhttps://x.com/b#frag\n');
+const parsedTxt3 = cli.parseUrlList(txt3);
+eq('parseUrlList txt 行尾註解被剝掉', parsedTxt3[0] && parsedTxt3[0].url, 'https://x.com/a');
+eq(
+  'parseUrlList txt 網址內的 #fragment 保留',
+  parsedTxt3[1] && parsedTxt3[1].url,
+  'https://x.com/b#frag',
+);
+
+// --fail-on 只看「目標等級內、已對應台灣準則」的違規
+const onlyAAA = { A: 0, AA: 0, AAA: 2, unmapped: 3 };
+check(
+  'failOnTriggered 只有 AAA／未對應、目標 A → 不觸發',
+  !cli.failOnTriggered(onlyAAA, 'violations', 'A'),
+);
+check('failOnTriggered 目標 AAA → 觸發', cli.failOnTriggered(onlyAAA, 'violations', 'AAA'));
+check('failOnTriggered none → 永不觸發', !cli.failOnTriggered({ A: 5 }, 'none', 'AA'));
+eq(
+  'singlePageExitCode 目標內有違規 → 3',
+  cli.singlePageExitCode({ byLevel: { A: 1 } }, 'violations', 'AA'),
+  3,
+);
+
+// 多頁離開碼：全部失敗 2、觸發 3、部分失敗 0、什麼都沒有 0
+const okPage = (byLevel) => ({ ok: true, summary: { byLevel } });
+const badPage = { ok: false, error: 'x' };
+eq(
+  'multiPageExitCode 全部失敗 → 2',
+  cli.multiPageExitCode([badPage, badPage], 'violations', 'AA'),
+  2,
+);
+eq(
+  'multiPageExitCode 部分失敗、無目標內違規 → 0',
+  cli.multiPageExitCode([badPage, okPage({ AAA: 1 })], 'violations', 'AA'),
+  0,
+);
+eq(
+  'multiPageExitCode 有目標內違規 → 3',
+  cli.multiPageExitCode([badPage, okPage({ AA: 1 })], 'violations', 'AA'),
+  3,
+);
+
+// Chrome 沙箱：預設保留；旗標或 CI 真值才關；CI=false／0 不算
+check('chromeLaunchArgs 預設不關沙箱', !cli.chromeLaunchArgs(false, {}).includes('--no-sandbox'));
+check(
+  'chromeLaunchArgs --no-sandbox 旗標',
+  cli.chromeLaunchArgs(true, {}).includes('--no-sandbox'),
+);
+check(
+  'chromeLaunchArgs CI=true',
+  cli.chromeLaunchArgs(false, { CI: 'true' }).includes('--no-sandbox'),
+);
+check(
+  'chromeLaunchArgs CI=false／0 不關沙箱',
+  !cli.chromeLaunchArgs(false, { CI: 'false' }).includes('--no-sandbox') &&
+    !cli.chromeLaunchArgs(false, { CI: '0' }).includes('--no-sandbox'),
+);
+
+// 離開碼整合測試：實際 spawn CLI，只測「不需 Chrome 就該擋下」的參數錯誤（全部 exit 1，
+// 而且都在啟動瀏覽器之前——CHROME_PATH 指到不存在的路徑，若真的走到啟動會變成 exit 2）
+const { spawnSync } = require('child_process');
+const CLI = path.resolve(__dirname, '..', '..', 'cli', 'ramp-scan.js');
+const runCli = (args) =>
+  spawnSync(process.execPath, [CLI, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, CHROME_PATH: path.join(tmp, 'no-such-chrome.exe'), CI: '' },
+    timeout: 20000,
+  }).status;
+const plainList = path.join(tmp, 'plain.txt');
+fs.writeFileSync(plainList, 'https://x.example/a\nhttps://x.example/b\n');
+const emptyList = path.join(tmp, 'empty.txt');
+fs.writeFileSync(emptyList, '# 只有註解\n');
+eq('CLI --help → 0', runCli(['--help']), 0);
+eq('CLI 沒給網址 → 1', runCli([]), 1);
+eq('CLI 不認得的旗標 → 1', runCli(['--foo', 'https://x.example/']), 1);
+eq('CLI 旗標缺值 → 1', runCli(['https://x.example/', '--depth']), 1);
+eq('CLI 無效 regex → 1', runCli(['https://x.example/', '--include', '[']), 1);
+eq('CLI --format 不合法 → 1', runCli(['https://x.example/', '--format', 'xml']), 1);
+eq('CLI --fail-on 不合法 → 1', runCli(['https://x.example/', '--fail-on', 'bogus']), 1);
+eq('CLI --timeout 0 → 1（不再靜默夾成 1ms）', runCli(['https://x.example/', '--timeout', '0']), 1);
+eq('CLI --max-pages 0 → 1', runCli(['https://x.example/', '--max-pages', '0']), 1);
+eq('CLI 清單檔不存在 → 1', runCli(['--url-list', path.join(tmp, 'nope.csv')]), 1);
+eq('CLI 清單為空 → 1', runCli(['--url-list', emptyList]), 1);
+eq('CLI 清單全部被排除 → 1', runCli(['--url-list', plainList, '--exclude', '.']), 1);
+eq('CLI 單頁被排除 → 1', runCli(['https://x.example/', '--exclude', 'x\\.example']), 1);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 // mapPool（--concurrency 的並行池）：以假的 async 任務驗證順序保留與並行不超過上限，不需瀏覽器
@@ -208,6 +310,43 @@ fs.rmSync(tmp, { recursive: true, force: true });
   eq('mapPool 並行峰值等於上限', peak, 3);
   const single = await cli.mapPool([1, 2, 3], 1, async (x) => x + 1);
   eq('mapPool 並行 1 = 循序', single.join(','), '2,3,4');
+
+  // scanList 的 truncated：被 --exclude 濾掉不算截斷，真的超過 --max-pages 才算
+  // （注入假的 visit，不需瀏覽器）
+  const fakeReport = () => ({ report: { summary: { violations: 0, byLevel: {} } } });
+  const entries3 = ['a', 'b', 'skip'].map((n) => ({ url: `https://x.example/${n}`, lang: '' }));
+  const base = { pass: (u) => !u.endsWith('skip'), concurrency: 1, delay: 0, visit: fakeReport };
+  const r2 = await cli.scanList(null, entries3, { ...base, maxPages: 2 }, () => {});
+  check('scanList 只是被排除 → truncated=false', r2.truncated === false && r2.pages.length === 2);
+  const r1 = await cli.scanList(null, entries3, { ...base, maxPages: 1 }, () => {});
+  check('scanList 超過 max-pages → truncated=true', r1.truncated === true && r1.pages.length === 1);
+
+  // visitPage 必須在 goto 之前開 setBypassCSP（否則嚴格 CSP 的網站注入必失敗）——
+  // 用記錄呼叫順序的假 browser/page 驗證，不需 Chrome
+  const calls = [];
+  const fakePage = {
+    setViewport: async () => calls.push('viewport'),
+    setUserAgent: async (ua) => calls.push('ua:' + ua),
+    setBypassCSP: async (v) => calls.push('csp:' + v),
+    goto: async () => calls.push('goto'),
+    title: async () => 't',
+    addScriptTag: async () => calls.push('inject'),
+    evaluate: async () =>
+      calls.includes('scan') ? [] : (calls.push('scan'), { violations: [], incomplete: [] }),
+    url: () => 'https://x.example/',
+    close: async () => calls.push('close'),
+  };
+  await cli.visitPage({ newPage: async () => fakePage }, 'https://x.example/', { timeout: 5000 });
+  check(
+    'visitPage 在 goto 之前 setBypassCSP(true)',
+    calls.indexOf('csp:true') >= 0 && calls.indexOf('csp:true') < calls.indexOf('goto'),
+    calls.join(' → '),
+  );
+  const pkgVer = require(path.resolve(__dirname, '..', '..', 'package.json')).version;
+  check(
+    'visitPage 的 User-Agent 帶真實版本',
+    calls.some((c) => c.startsWith('ua:') && c.includes(`ramp-scan/${pkgVer}`)),
+  );
 
   const fails = results.filter((r) => !r.ok).length;
   console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
