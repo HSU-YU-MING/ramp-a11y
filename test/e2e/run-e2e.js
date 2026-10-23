@@ -44,12 +44,28 @@ function findChrome() {
   return found;
 }
 
+/**
+ * 遞迴複製。刻意不用 fs.cpSync：Node 24（Windows）對「來源路徑含非 ASCII 字元」的資料夾
+ * 做遞迴 cpSync 會讓 node 原生崩潰（0xC0000409，沒有任何輸出）——本 repo 放在
+ * D:\擴充功能\… 下就會中，e2e 會一聲不響地掛掉。單檔 copyFileSync 不受影響。
+ */
+function copyRecursive(src, dest) {
+  if (fs.statSync(src).isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const name of fs.readdirSync(src)) {
+      copyRecursive(path.join(src, name), path.join(dest, name));
+    }
+  } else {
+    fs.copyFileSync(src, dest);
+  }
+}
+
 // ===== 建立測試副本（加 <all_urls>）=====
 function buildTestExtension() {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'ramp-a11y-e2e-'));
   // 清單真相源在 scripts/ext-files.js（與上架 zip 共用，不會再兩處漂移）
   for (const item of require(path.join(REPO, 'scripts/ext-files.js'))) {
-    fs.cpSync(path.join(REPO, item), path.join(dest, item), { recursive: true });
+    copyRecursive(path.join(REPO, item), path.join(dest, item));
   }
   const mfPath = path.join(dest, 'manifest.json');
   const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
