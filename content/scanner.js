@@ -246,6 +246,13 @@
     return null;
   }
 
+  /** role 的第一個 token 是否為 presentation/none——這類元素被明確拔除語義，
+   *  NVDA 不會念表格座標、地標或清單邊界（這正是排版表格的補救手段），照播會誤導。 */
+  function isPresentational(el) {
+    const r = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
+    return r === 'presentation' || r === 'none';
+  }
+
   /** 集合位置「{總數} 之 {序位}」（aria-posinset/setsize，或原生 li/option/radio 計算） */
   function nvdaPosition(el, roleEn) {
     const pos = parseInt(el.getAttribute('aria-posinset'), 10);
@@ -267,13 +274,24 @@
     }
     if (roleEn === 'radio' && el.name) {
       const nm = window.CSS && CSS.escape ? CSS.escape(el.name) : el.name;
+      // 以所屬表單為範圍——同名 radio group 可以存在於不同 form，全頁查會把計數合併
+      const scope = el.form || document;
       const radios = Array.prototype.slice.call(
-        document.querySelectorAll('input[type="radio"][name="' + nm + '"]'),
+        scope.querySelectorAll('input[type="radio"][name="' + nm + '"]'),
       );
       const i = radios.indexOf(el);
       if (i >= 0) return radios.length + ' 之 ' + (i + 1);
     }
     return null;
+  }
+
+  /** ARIA 清單的「直屬」項目數——巢狀清單的 listitem 屬於內層清單，
+   *  不能用 querySelectorAll 全撈（會把內層項目算進外層）。 */
+  function ariaListItemCount(el) {
+    return Array.prototype.filter.call(
+      el.querySelectorAll('[role="listitem"]'),
+      (li) => li.parentElement && li.parentElement.closest('[role="list"],ul,ol,menu') === el,
+    ).length;
   }
 
   /** 清單的項目數「有 N 項」——僅真清單（ul/ol/role=list）；
@@ -283,7 +301,7 @@
     const n =
       el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU'
         ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-        : el.querySelectorAll('[role="listitem"]').length;
+        : ariaListItemCount(el);
     return n > 0 ? '有 ' + n + ' 項' : null;
   }
 
@@ -314,7 +332,10 @@
   // 表格格點模型：正確處理 colspan/rowspan——把每個儲存格攤到它實際佔用的
   // 列×欄格點，才能算對「第 N 列 第 N 欄」與欄/列標題。以 WeakMap 快取整張表的
   // 格點（同一張表的多個儲存格共用，避免每格重算）。
-  const tableGridCache = new WeakMap();
+  // 每次掃描/線性化進入時重建（__rampA11yScan／__rampA11yReadingOrder 開頭）——
+  // scanner 注入一次後常駐 isolated world，跨掃描留著快取會讓「頁面表格變動後重掃」
+  // 拿到舊格點：座標整排錯位、欄/列標題對錯格
+  let tableGridCache = new WeakMap();
   function tableGrid(table) {
     let g = tableGridCache.get(table);
     if (g) return g;
@@ -353,7 +374,8 @@
   function nvdaTableCell(el) {
     if (el.tagName !== 'TD' && el.tagName !== 'TH') return null;
     const table = el.closest('table');
-    if (!table) return null;
+    if (!table || isPresentational(table)) return null; // 排版表格不念座標
+
     const grid = tableGrid(table);
     const pos = grid.coords.get(el);
     if (!pos) return null;
@@ -372,7 +394,7 @@
 
   /** 表格維度「表格有 N 列 M 欄」（列先欄後——經真 NVDA 對照驗證的實際語序） */
   function nvdaTableDims(el) {
-    if (el.tagName !== 'TABLE') return null;
+    if (el.tagName !== 'TABLE' || isPresentational(el)) return null;
     const grid = tableGrid(el);
     return grid.rowCount && grid.colCount
       ? '表格有 ' + grid.rowCount + ' 列 ' + grid.colCount + ' 欄'
@@ -515,15 +537,29 @@
   function roIsHidden(el) {
     if (el.closest && el.closest('[aria-hidden="true"]')) return true;
     if (typeof el.checkVisibility === 'function') {
-      return !el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true });
+      // checkVisibilityCSS 是 Chrome 105 起的原始選項名，visibilityProperty 是
+      // 約 116 起的規範別名——兩個都傳，否則 105–115 會忽略未知選項、
+      // 漏掉 visibility:hidden 的排除（規範允許同義並存）
+      return !el.checkVisibility({
+        checkVisibilityCSS: true,
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      });
     }
     const s = getComputedStyle(el);
     return s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse';
   }
+  // tagName 的大小寫陷阱：HTML 元素回大寫，SVG 等外來命名空間保留原字（inline <svg>
+  // 是小寫 'svg'）。所有 tagName 查表一律先 toUpperCase，否則 SVG 永遠對不上
+  // RO_OBJECT_TAGS 而被走訪進子樹（aria-label 遺失、<text> 內文變一般文字停點）。
+  function roTag(el) {
+    return el.tagName.toUpperCase();
+  }
   function roIsObject(el) {
+    const t = roTag(el);
     // 無 href 的 <a> 不是連結（NVDA 不當成獨立物件）
-    if (el.tagName === 'A' && !el.getAttribute('href') && !el.getAttribute('role')) return false;
-    if (RO_OBJECT_TAGS.has(el.tagName)) return true;
+    if (t === 'A' && !el.getAttribute('href') && !el.getAttribute('role')) return false;
+    if (RO_OBJECT_TAGS.has(t)) return true;
     const r = el.getAttribute('role');
     return !!(r && RO_WIDGET_ROLES.has(r.trim().split(/\s+/)[0]));
   }
@@ -541,9 +577,16 @@
   function roBlockRole(el) {
     const t = el.tagName;
     if (/^H[1-6]$/.test(t)) return '標題第 ' + t[1] + ' 級';
-    if (t === 'LI') return '清單項目';
-    if (t === 'TH') return '表頭儲存格';
-    if (t === 'TD') return '儲存格';
+    if (t === 'LI') {
+      // 被拔除語義的清單（role=presentation）裡的項目不再是清單項目
+      const list = el.closest('ul,ol,menu,[role]');
+      return list && isPresentational(list) ? '文字' : '清單項目';
+    }
+    if (t === 'TH' || t === 'TD') {
+      const tb = el.closest('table');
+      if (tb && isPresentational(tb)) return '文字'; // 排版表格的格子只是文字
+      return t === 'TH' ? '表頭儲存格' : '儲存格';
+    }
     if (t === 'BLOCKQUOTE') return '引述';
     if (t === 'FIGCAPTION') return '圖說';
     if (t === 'DT') return '詞彙';
@@ -567,6 +610,7 @@
   }
   /** 元素是否為地標（含隱含地標的 HTML 元素）→ 回傳地標中文名，否則 null */
   function roLandmark(el) {
+    if (isPresentational(el)) return null; // <nav role="presentation"> 等被拔除語義
     const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
     if (roleAttr && RO_LANDMARK_ZH[roleAttr]) {
       if ((roleAttr === 'region' || roleAttr === 'form') && !roHasName(el)) return null;
@@ -604,21 +648,19 @@
         exit: '離開' + lm,
       };
     }
-    if (el.tagName === 'TABLE') {
+    // role=presentation/none 的表格與清單被拔除語義，NVDA 不播邊界
+    if (el.tagName === 'TABLE' && !isPresentational(el)) {
       return { kind: 'table', enter: nvdaTableDims(el) || '表格', exit: '離開表格' };
     }
     // 真清單（ul/ol/role=list）念「清單 有 N 項」；listbox 不念項目數（經真 NVDA 驗證）
     const roleAttr = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
-    if (
-      el.tagName === 'UL' ||
-      el.tagName === 'OL' ||
-      el.tagName === 'MENU' ||
-      roleAttr === 'list'
-    ) {
-      const n =
-        el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU'
-          ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
-          : el.querySelectorAll('[role="listitem"]').length;
+    const isNativeList = el.tagName === 'UL' || el.tagName === 'OL' || el.tagName === 'MENU';
+    if ((isNativeList && !isPresentational(el)) || roleAttr === 'list') {
+      // 原生清單數 <li> 子元素（<ul role="list"> 的 li 是隱含 listitem，撈屬性會數到 0）；
+      // 純 ARIA 清單數「直屬」的 [role=listitem]
+      const n = isNativeList
+        ? Array.prototype.filter.call(el.children, (c) => c.tagName === 'LI').length
+        : ariaListItemCount(el);
       if (n > 0) return { kind: 'list', enter: '清單 有 ' + n + ' 項', exit: '離開清單' };
     }
     return null;
@@ -684,6 +726,7 @@
   }
 
   window.__rampA11yReadingOrder = function () {
+    tableGridCache = new WeakMap(); // 頁面可能已變動，格點快取只在單次線性化內有效
     // 清掉上次留下的定位屬性，避免索引錯亂
     document.querySelectorAll('[data-ramp-ro]').forEach((e) => e.removeAttribute('data-ramp-ro'));
 
@@ -741,9 +784,11 @@
           if (h) stop.description = h;
         }
       } else if (el.tagName === 'LI') {
-        // 清單項目：補集合位置「N 之 M」（NVDA 會念）
-        const pos = nvdaPosition(el, 'listitem');
-        if (pos) stop.position = pos;
+        // 清單項目：補集合位置「N 之 M」（NVDA 會念）；被拔除語義的清單不念
+        if (!(el.parentElement && isPresentational(el.parentElement))) {
+          const pos = nvdaPosition(el, 'listitem');
+          if (pos) stop.position = pos;
+        }
       }
       stops.push(stop);
     }
@@ -790,8 +835,15 @@
         itemCount = nv.itemCount;
         description = nv.description;
       } else {
-        role = RO_OBJ_FALLBACK[c.tagName] || c.tagName.toLowerCase();
+        role = RO_OBJ_FALLBACK[roTag(c)] || c.tagName.toLowerCase();
       } // getRole 無角色時的保底
+      // 無 role 屬性的裸 inline SVG：axe 的 getRole 可能回 null 或 graphics-document
+      // 這類 NVDA 翻譯未收錄的角色——以既有的「圖形」保底；名稱同樣保底取 aria-label
+      //（axe 對裸 SVG 常整個算不出 preview，標籤不該因此消失）
+      if (roTag(c) === 'SVG') {
+        if (!(nv && nv.role)) role = RO_OBJ_FALLBACK.SVG;
+        if (!name) name = (c.getAttribute('aria-label') || '').trim() || null;
+      }
       // 若物件是清單項目的唯一內容（li 無自身文字，如 <li><a>選單</a></li>），
       // 把清單位置掛到物件上——NVDA 會在念出該連結時一併報位置。
       if (!position && c.closest) {
@@ -840,7 +892,7 @@
           continue;
         }
         if (c.nodeType !== 1) continue;
-        if (RO_SKIP_TAGS.has(c.tagName) || roIsHidden(c)) continue;
+        if (RO_SKIP_TAGS.has(roTag(c)) || roIsHidden(c)) continue;
         if (roIsObject(c)) {
           pushObject(c);
           continue;
@@ -947,7 +999,9 @@
     if (role === 'alert') return 'assertive';
     if (role === 'status' || role === 'log' || role === 'timer' || role === 'marquee')
       return 'polite';
-    return region.tagName === 'OUTPUT' ? 'polite' : 'polite';
+    // 走到這裡的只有 <output>（隱含 polite）與「aria-live 值無效」的元素——
+    // 無效值等同 off，NVDA 不播報
+    return region.tagName === 'OUTPUT' ? 'polite' : null;
   }
 
   /** 記錄一筆播報（去重、去空白、限長） */
@@ -979,17 +1033,35 @@
           const node =
             m.target && m.target.nodeType === 1 ? m.target : m.target && m.target.parentElement;
           const region = node && node.closest ? node.closest(LIVE_SEL) : null;
-          if (!region) continue;
-          if (region.getAttribute('aria-atomic') === 'true') {
-            liveRecord(region, region.textContent); // 整區播報
-          } else if (m.type === 'characterData') {
-            liveRecord(region, m.target.nodeValue);
-          } else if (m.type === 'childList' && m.addedNodes.length) {
-            let added = '';
+          if (region) {
+            if (region.getAttribute('aria-atomic') === 'true') {
+              liveRecord(region, region.textContent); // 整區播報
+            } else if (m.type === 'characterData') {
+              liveRecord(region, m.target.nodeValue);
+            } else if (m.type === 'childList' && m.addedNodes.length) {
+              let added = '';
+              m.addedNodes.forEach((n) => {
+                added += ' ' + (n.textContent != null ? n.textContent : n.nodeValue || '');
+              });
+              liveRecord(region, added || region.textContent);
+            }
+          }
+          // 「整個 live region 節點被插入」——toast／表單錯誤的最主流寫法。
+          // m.target 是插入點的父節點，上面的 closest 永遠找不到新節點，必須
+          // 另掃 addedNodes 自身與其子樹。NVDA 對這種插入只保證播報 alert 類
+          // （role=alert／aria-live=assertive，alert 角色的定義行為）；polite
+          // 區域須先存在於頁面、其後的內容變動才播，插入當下不播，故不記。
+          if (m.type === 'childList' && m.addedNodes.length) {
             m.addedNodes.forEach((n) => {
-              added += ' ' + (n.textContent != null ? n.textContent : n.nodeValue || '');
+              if (n.nodeType !== 1) return;
+              const regs = [];
+              if (n.matches && n.matches(LIVE_SEL)) regs.push(n);
+              if (n.querySelectorAll) regs.push(...n.querySelectorAll(LIVE_SEL));
+              regs.forEach((rg) => {
+                if (rg === region) return; // 已在上方記過
+                if (livePoliteness(rg) === 'assertive') liveRecord(rg, rg.textContent);
+              });
             });
-            liveRecord(region, added || region.textContent);
           }
         }
       });
@@ -1039,6 +1111,7 @@
    * 只回傳可序列化的純資料（executeScript 的結果必須可 JSON 化）。
    */
   window.__rampA11yScan = async function () {
+    tableGridCache = new WeakMap(); // 頁面可能已變動，格點快取只在單次掃描內有效
     // 掃描前先清掉舊高亮，避免高亮樣式影響結果
     window.__rampA11yClear();
 
@@ -1122,6 +1195,8 @@
     nvdaValue,
     nvdaPosition,
     nvdaItemCount,
+    ariaListItemCount,
+    isPresentational,
     nvdaDescription,
     nvdaStates,
     nvdaTableCell,

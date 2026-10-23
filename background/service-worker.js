@@ -11,3 +11,11 @@
 chrome.runtime.onInstalled.addListener(() => {
   // 目前無需初始化動作
 });
+
+// 分頁關閉即清掉它的掃描快取（scan_<tabId>）。storage.session 在 Chrome 102–111
+// 的 quota 只有 1MB，不清的話多分頁累積塞滿後，所有後續快取寫入都會靜默失敗。
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove('scan_' + tabId).catch(() => {
+    /* 快取清理失敗無礙 */
+  });
+});

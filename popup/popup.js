@@ -103,11 +103,17 @@ function isRestrictedUrl(url) {
     'chrome-extension://',
     'chrome-search://',
     'chrome-devtools://',
+    'chrome-untrusted://',
     'edge://',
     'extension://',
     'devtools://',
     'about:',
     'view-source:',
+    'blob:',
+    'data:',
+    'filesystem:',
+    // file:// 刻意不擋：使用者勾了「允許存取檔案網址」後掃本機檔案是合法情境，
+    // 沒勾時注入會失敗、由錯誤訊息轉譯分流
   ];
   if (restrictedSchemes.some((s) => url.startsWith(s))) return true;
   // 擴充功能商店頁面同樣禁止注入
@@ -153,11 +159,12 @@ async function loadPrefs() {
   syncFilterUI();
 }
 
-function savePrefs() {
+async function savePrefs() {
+  // MV3 的 storage.set 回傳 Promise——不 await 的同步 try/catch 永遠接不到失敗
   try {
-    chrome.storage.local.set({ prefs });
+    await chrome.storage.local.set({ prefs });
   } catch {
-    /* 忽略 */
+    /* 寫入失敗就用記憶體內的值，下次開 popup 回到舊偏好 */
   }
 }
 
@@ -208,11 +215,19 @@ async function runScan() {
     }
 
     // 步驟一：注入本地打包的 axe-core、繁中語言包與掃描器
-    // （同一 isolated world 共用，axe 全域可被後續檔案取用）
-    await chrome.scripting.executeScript({
+    // （同一 isolated world 共用，axe 全域可被後續檔案取用）。
+    // 先探測是否已注入——重新檢測時少跑一次 axe.min.js（~550KB）的解析；
+    // 頁面重整後 isolated world 是全新的，探測自然為 false 而重新注入
+    const probe = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+      func: () => !!(window.axe && window.__rampA11yScan),
     });
+    if (!(probe && probe[0] && probe[0].result)) {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'],
+      });
+    }
 
     // 步驟二：執行掃描，取回序列化的純資料
     const injection = await chrome.scripting.executeScript({
@@ -236,7 +251,10 @@ async function runScan() {
         ['scan_' + tab.id]: { url: tab.url, ts: lastScan.ts, result },
       });
     } catch {
-      // 快取失敗不影響主流程
+      // 快取失敗（如 quota 滿）不影響主流程，但要出聲——否則使用者重開 popup
+      // 發現結果消失，會以為功能壞了（靜默失效）
+      cacheNoteEl.textContent = '本次結果未能寫入快取（儲存空間不足），關閉 popup 後需重新檢測。';
+      cacheNoteEl.hidden = false;
     }
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -676,14 +694,19 @@ async function enterReadingMode() {
   issuesEl.innerHTML = '<p class="ro-loading">正在分析整頁朗讀順序…</p>';
   try {
     const data = await execReadingOrder();
+    // 大頁面分析要數秒，期間使用者可能已切回其他模式——此時只存快取、不渲染，
+    // 否則朗讀清單會蓋掉已顯示的問題清單（refreshLive 同有此守門）
+    if (data) readingData = data;
+    if (currentMode !== 'reading') return;
     if (!data) {
       issuesEl.innerHTML = '<p class="ro-empty">無法取得朗讀順序，請按「重新檢測」後再試。</p>';
       return;
     }
-    readingData = data;
     renderReadingList(data);
   } catch (err) {
-    issuesEl.innerHTML = '<p class="ro-empty">分析朗讀順序時發生錯誤。</p>';
+    if (currentMode === 'reading') {
+      issuesEl.innerHTML = '<p class="ro-empty">分析朗讀順序時發生錯誤。</p>';
+    }
   }
 }
 
@@ -756,6 +779,9 @@ function renderLiveList(data) {
   issuesEl.scrollTop = 0;
 }
 
+/** 上次渲染的播報簽章（筆數＋最後一筆時間戳）——內容沒變就不重繪 */
+let lastLiveSig = null;
+
 /** 向頁面取回目前的播報緩衝並渲染 */
 async function refreshLive() {
   if (currentTabId == null) return;
@@ -765,7 +791,14 @@ async function refreshLive() {
       func: () => (window.__rampA11yLiveGet ? window.__rampA11yLiveGet() : { on: false, log: [] }),
     });
     const data = injection && injection[0] ? injection[0].result : null;
-    if (currentMode === 'live') renderLiveList(data || { log: [] });
+    if (currentMode !== 'live') return;
+    const log = (data && data.log) || [];
+    // 每 1.2 秒無條件 innerHTML 重建會把捲動位置拉回頂端、讓「清除」鈕
+    // 在 mousedown/mouseup 之間被換掉而吃點擊——沒變化就跳過
+    const sig = `${log.length}:${log.length ? log[log.length - 1].ts : 0}`;
+    if (sig === lastLiveSig) return;
+    lastLiveSig = sig;
+    renderLiveList(data || { log: [] });
   } catch {
     /* 分頁關閉或跳轉時忽略 */
   }
@@ -774,6 +807,7 @@ async function refreshLive() {
 /** 切到動態播報模式：注入監看器、開始輪詢 */
 async function enterLiveMode() {
   setModeUI('live');
+  lastLiveSig = null; // 重新進入一律重繪
   readingSummaryEl.hidden = true;
   issuesEl.innerHTML = '<p class="ro-loading">開始監看即時區域…</p>';
   try {
@@ -849,7 +883,8 @@ function buildReportHtml(scan) {
   const levelCounts = { A: 0, AA: 0, AAA: 0 };
   let unmappedCount = 0;
   violations.forEach((v) => {
-    if (v.mapped) levelCounts[v.level] += 1;
+    // 與 renderStats 同樣防呆：twLevel 出現髒值時顯示 0 而非 NaN
+    if (v.mapped) levelCounts[v.level] = (levelCounts[v.level] || 0) + 1;
     else unmappedCount += 1;
   });
 
@@ -966,7 +1001,9 @@ function exportReport() {
   a.href = url;
   a.download = filename;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  // 開「下載前詢問儲存位置」的使用者挑位置可能超過幾秒，太早 revoke 會讓下載
+  // 顯示「失敗 - 網路錯誤」；popup 關閉時 blob 本就自動回收，寬限拉長到 60 秒
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 // ===== 事件繫結 =====
@@ -1028,16 +1065,22 @@ readingSummaryEl.addEventListener('click', (e) => {
 });
 
 // 人工複核自評變更（事件代理，自評選單為動態渲染）
-issuesEl.addEventListener('change', (e) => {
+issuesEl.addEventListener('change', async (e) => {
   const sel = e.target.closest('.review-select');
   if (!sel || !reviewKey) return;
   const axeId = sel.dataset.axeId;
   if (sel.value) reviewState[axeId] = sel.value;
   else delete reviewState[axeId];
+  // await 才接得到失敗（MV3 Promise 語義）；全部清回「未確認」就整鍵移除，
+  // 否則每個檢測過的網址都留一筆空物件、storage.local 無限成長
   try {
-    chrome.storage.local.set({ [reviewKey]: reviewState });
+    if (Object.keys(reviewState).length === 0) {
+      await chrome.storage.local.remove(reviewKey);
+    } else {
+      await chrome.storage.local.set({ [reviewKey]: reviewState });
+    }
   } catch {
-    /* 忽略 */
+    /* 寫入失敗：記憶體內狀態仍正確，匯出報告不受影響 */
   }
 });
 

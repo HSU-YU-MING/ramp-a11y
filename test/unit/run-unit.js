@@ -80,6 +80,12 @@ eq(
   I.livePoliteness(el('<div role="status"></div>')),
   'polite',
 );
+eq(
+  'livePoliteness aria-live 無效值 → null（視同 off）',
+  I.livePoliteness(el('<div aria-live=""></div>')),
+  null,
+);
+eq('livePoliteness output → polite', I.livePoliteness(el('<output></output>')), 'polite');
 
 // ===== nvdaValue =====
 eq(
@@ -174,6 +180,47 @@ eq(
 );
 eq('nvdaTableDims 含 colspan 欄數', I.nvdaTableDims(span), '表格有 3 列 3 欄');
 
+// ===== isPresentational／presentation 表格與清單（NVDA 不播被拔除的語義）=====
+check(
+  'isPresentational role=presentation',
+  I.isPresentational(el('<table role="presentation"></table>')) === true,
+);
+check('isPresentational 無 role', I.isPresentational(el('<table></table>')) === false);
+const ptbl = mount(
+  '<table role="presentation"><tr><th>A</th></tr><tr><td id="pc">B</td></tr></table>',
+);
+eq('nvdaTableDims presentation → null', I.nvdaTableDims(ptbl), null);
+eq('nvdaTableCell presentation → null', I.nvdaTableCell(doc.getElementById('pc')), null);
+eq(
+  'roBoundary 表格 presentation → null',
+  I.roBoundary(el('<table role="presentation"><tr><td>x</td></tr></table>')),
+  null,
+);
+eq(
+  'roBoundary 清單 presentation → null',
+  I.roBoundary(el('<ul role="presentation"><li>a</li></ul>')),
+  null,
+);
+
+// ===== ariaListItemCount：巢狀 ARIA 清單只數直屬項目 =====
+const nestedList = el(
+  '<div role="list"><div role="listitem">a</div>' +
+    '<div role="list"><div role="listitem">b</div><div role="listitem">c</div></div></div>',
+);
+eq('ariaListItemCount 巢狀只數直屬', I.ariaListItemCount(nestedList), 1);
+eq('nvdaItemCount 巢狀 ARIA 清單', I.nvdaItemCount(nestedList, 'list'), '有 1 項');
+
+// ===== nvdaPosition：radio 以所屬表單為範圍（同名群組可存在於不同 form）=====
+const twoForms = mount(
+  '<div><form><input type="radio" name="g" id="r1"><input type="radio" name="g"></form>' +
+    '<form><input type="radio" name="g"><input type="radio" name="g"><input type="radio" name="g"></form></div>',
+);
+eq(
+  'nvdaPosition radio 以所屬表單為範圍',
+  I.nvdaPosition(twoForms.querySelector('#r1'), 'radio'),
+  '2 之 1',
+);
+
 // ===== roLandmark =====
 eq('roLandmark nav', I.roLandmark(el('<nav></nav>')), '導覽區');
 eq('roLandmark section 無名 → null', I.roLandmark(el('<section></section>')), null);
@@ -183,6 +230,11 @@ eq(
   '區域',
 );
 eq('roLandmark role=main', I.roLandmark(el('<div role="main"></div>')), '主要內容區');
+eq(
+  'roLandmark nav role=presentation → null',
+  I.roLandmark(el('<nav role="presentation"></nav>')),
+  null,
+);
 
 // roBoundary：清單邊界
 const ub = I.roBoundary(el('<ul><li>a</li><li>b</li></ul>'));
