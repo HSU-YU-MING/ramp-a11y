@@ -159,12 +159,13 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
-npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：59 項
+npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：65 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
 npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：44 項
 npm run test:docs    # README 數字守門（測試項目數／檢測碼條數／axe 版本，比對真正的來源）
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：54 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
+npm run test:nvda:live  # 真實 NVDA 的動態播報（即時區域）對照
 ```
 
 以上除了 e2e／nvda 之外，均由 [GitHub Actions](.github/workflows/ci.yml) 在每次 push／PR 自動執行；
@@ -284,7 +285,7 @@ Chrome 沙箱；容器等環境跑不起來時才開）／`--timeout`。輸出�
 | 版本 | 對齊 | 成功準則 | 適用期間 |
 |------|------|---------|---------|
 | 110.07 版 | WCAG 2.1 | 78 條 | 現行，至 115 年 11 月 29 日 |
-| 115 年修正版 | WCAG 2.2 | 86 條（新增 9 條、刪除 4.1.1） | **115 年 11 月 30 日起生效** |
+| 115 年修正版 | WCAG 2.2 | 87 項（新增 9 條；4.1.1 保留編號、標示「因過時而刪除」，實際適用 86 條） | **115 年 11 月 30 日起生效** |
 
 兩版差異影響到的條目（4.1.1、2.5.8）在檢測結果與報告中均有附註說明，其餘對應兩版通用（準則編號與官方名稱一致）。
 

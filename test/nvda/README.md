@@ -9,16 +9,51 @@
 
 ```sh
 npm install
-npx @guidepup/setup                 # 裝 Guidepup 專用 NVDA（含 NVDA Remote 附加元件）
-npm run test:nvda                   # 對照 test/nvda-fixture.html
-npm run test:nvda -- reading-order-fixture.html   # 換頁面
+npx @guidepup/setup install nvda    # 裝 Guidepup 專用 NVDA（含 NVDA Remote 附加元件）
+npm run test:nvda                   # 靜態逐行對照 test/nvda-fixture.html
+npm run test:nvda -- nvda-audit-fixture.html      # 換頁面（2026-10 稽核修正的對照頁）
+npm run test:nvda:live              # 動態播報（即時區域）對照 test/nvda-live-fixture.html
 ```
+
+> **安裝指令變了**：`@guidepup/setup` 0.29 起拆成子指令，舊的 `npx @guidepup/setup`
+> 只會印說明。新版把 NVDA 裝在 `%LOCALAPPDATA%\guidepup\nvda\`（舊版解壓到 `%TEMP%`，
+> 暫存被清掉後登錄檔還在、setup 會誤判「已安裝」）。新版安裝工具需要
+> `@guidepup/guidepup` 0.36+，舊版 0.28 會報「manifest 損毀」。
 
 ## ⚠ 執行注意（需互動桌面，不進 CI）
 
-執行期間 NVDA 會出聲朗讀、桌面視窗會被最小化，屬預期行為。焦點處理已**全自動**
-（細節見 compare.js 檔頭：NVDA 啟動會觸發 Windows 彈出「設定」、Guidepup 的語音檢視器
-置頂攔截點擊、CDP 合成鍵盤 NVDA 聽不到——都已在工具內處理）。
+執行期間 NVDA 會出聲朗讀，屬預期行為。焦點處理已**全自動**（細節見 compare.js 檔頭：
+NVDA 啟動會觸發 Windows 彈出「設定」、Guidepup 的語音檢視器置頂攔截點擊、一般視窗的
+焦點會卡在網址列、CDP 合成鍵盤 NVDA 聽不到——都已在工具內處理）。
+
+動態播報的坑（live.js）：**由頁面計時器或自動化指令（CDP）直接改 DOM 時，NVDA 不一定
+播報**；由真鍵盤操作觸發的變動才會穩定播報。所以 live.js 每個情境都用「NVDA 送真 Enter
+按下觸發鈕」來製造變動——這也正是真實情境（按送出 → 跳錯誤訊息）。
+
+## ✅ 2026-10 稽核修正的真機對照
+
+**靜態逐行**（`nvda-audit-fixture.html`）：
+
+| 情境 | 真 NVDA 實際念出 | 我們的模擬 | 判定 |
+|---|---|---|---|
+| `role="presentation"` 排版表格 | 排版左欄／排版右欄（不念表格） | 同 | ✅ |
+| `role="presentation"` 的 ul | 不念「清單 有 N 項」 | 同 | ✅ |
+| 純 `role="presentation"` 的 nav | 不念地標 | 同 | ✅ |
+| `<nav role="presentation" aria-label>` | **假導覽, 地標**（全域屬性使 presentation 被忽略） | 〔假導覽 導覽區 地標〕 | ✅ 語義一致；NVDA 少念「導覽區」一詞，屬用詞小差 |
+| 巢狀 ARIA 清單 | 外層「有 2 項」、內層「有 3 項」 | 同（修正前外層會念 5 項） | ✅ |
+| 帶 aria-label 的 inline SVG | **圖片**, 營收圖表 | 營收圖表 圖片 | ✅（原用「圖形」，已改） |
+| 無名稱的裝飾 SVG | **完全不念** | 不列停點 | ✅（原會列出「圖片」，已改） |
+| 表頭列的第 2 格 | 第 2 欄, 數量 | 同 | ✅（原多帶「（品項）」當列標題，已改） |
+
+**動態播報**（`npm run test:nvda:live`），5 個情境全部一致：
+
+| 情境 | 真 NVDA | 我們的監看器 |
+|---|---|---|
+| 既有 `role=status` 內容變動 | 念「已儲存」 | ✅ 有記（polite） |
+| 插入整個 `role=alert` 節點 | 念「**請注意**, 表單有錯誤」 | ✅ 有記（assertive；修正前會漏） |
+| 插入「包著 alert」的外層容器 | 念「請注意, 巢狀錯誤訊息」 | ✅ 有記（修正前會漏） |
+| 插入「已帶文字」的新 `role=status` | **不念** | ✅ 不記 |
+| `aria-live=""`（無效值）區域變動 | **不念**（視同 off） | ✅ 不記 |
 
 ## ✅ 已完成：真 NVDA 逐控制項對照（2026-07-11）
 
@@ -56,4 +91,6 @@ npm run test:nvda -- reading-order-fixture.html   # 換頁面
 | 滑桿, 30／編輯區, user 123, 請輸入 6 到 12 個英數字 | 同 ✅ |
 
 已知的模擬簡化（非錯誤）：「已選取」「空白」「項目符號」「可點擊」等依情境浮動的
-即時細節，靜態快照不呈現；`<caption>` 被 NVDA 念作「圖表說明」，我們以文字停點呈現。
+即時細節，靜態快照不呈現；`<caption>` 被 NVDA 念作「圖表說明」，我們以文字停點呈現；
+NVDA 只在**換列／換欄時**才報列／欄標題（同一列往右走不重念列標題），我們的靜態快照
+則把儲存格關聯的標題都列出。

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>稽核對照頁</title>
+  </head>
+  <body>
+    <!-- 2026-10 稽核修正的真 NVDA 對照頁：每一段對應一項語義改動 -->
+    <h1>稽核對照頁</h1>
+
+    <!-- presentation 排版表格：不該念「表格有 N 列」與儲存格座標 -->
+    <table role="presentation">
+      <tr>
+        <td>排版左欄</td>
+        <td>排版右欄</td>
+      </tr>
+    </table>
+
+    <!-- 一般資料表格（對照組）：應念表格維度與座標 -->
+    <table>
+      <tr>
+        <th>品項</th>
+        <th>數量</th>
+      </tr>
+      <tr>
+        <td>蘋果</td>
+        <td>3</td>
+      </tr>
+    </table>
+
+    <!-- presentation 的 nav 帶 aria-label：衝突解決 → presentation 被忽略、仍是地標 -->
+    <nav role="presentation" aria-label="假導覽"><a href="#a">假導覽連結</a></nav>
+
+    <!-- 純 presentation 的 nav（無全域屬性）：不該念地標 -->
+    <nav role="presentation"><a href="#b">真排版連結</a></nav>
+
+    <!-- presentation 的 ul：不該念「清單 有 N 項」 -->
+    <ul role="presentation">
+      <li>排版項目甲</li>
+      <li>排版項目乙</li>
+    </ul>
+
+    <!-- 巢狀 ARIA 清單：外層只有 2 個直屬項目 -->
+    <div role="list">
+      <div role="listitem">外層一</div>
+      <div role="listitem">
+        外層二
+        <div role="list">
+          <div role="listitem">內層甲</div>
+          <div role="listitem">內層乙</div>
+          <div role="listitem">內層丙</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 無 role 的 inline SVG：應以名稱「營收圖表」被念出 -->
+    <svg viewBox="0 0 100 20" width="100" height="20" aria-label="營收圖表">
+      <path d="M0 10 L100 10" stroke="black" />
+    </svg>
+
+    <!-- 無名稱、無 role 的 inline SVG（裝飾圖示常見寫法）：看 NVDA 會不會念 -->
+    <svg viewBox="0 0 10 10" width="10" height="10">
+      <path d="M0 0 L10 10" stroke="black" />
+    </svg>
+
+    <!-- 無表頭列、只有列標題的表格：「1000」應帶列標題「一月」 -->
+    <table>
+      <tr>
+        <th>一月</th>
+        <td>1000</td>
+      </tr>
+    </table>
+
+    <p>頁尾文字</p>
+  </body>
+</html>

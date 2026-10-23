@@ -5,15 +5,19 @@
  * 擷取它實際念出的每一句，與我們的 __rampA11yReadingOrder 模擬並排比對，
  * 驗證用詞／組合／線性化順序的忠實度。
  *
- * 需求：Windows + 本機 Chrome + 先執行 npx @guidepup/setup（安裝 Guidepup 專用 NVDA）
+ * 需求：Windows + 本機 Chrome + 先執行 npx @guidepup/setup install nvda（安裝 Guidepup 專用 NVDA）
  * 用法：npm run test:nvda [-- fixture 檔名，預設 nvda-fixture.html]
+ * 即時區域（動態播報）另見 live.js——本工具只做靜態逐行對照。
  *
  * 全自動焦點處理（實測踩雷後的成果，勿隨意簡化）：
  *  1. NVDA 啟動時 Windows 常會彈出「設定 > 協助工具」搶焦點 → 啟動後殺 SystemSettings.exe
  *  2. Guidepup NVDA 預設開啟「語音檢視器」且置頂蓋在畫面左上（x=0,y=0,500x500），
  *     會攔截點擊 → 先把 guidepup nvda.ini 的 showSpeechViewerAtStartup 關掉
- *  3. 以合成滑鼠點擊（OS 層）點進 Chrome 視窗內，真正轉移鍵盤焦點
- *  4. Tab 一定要用 nvda.press()（OS 層、經 NVDA 鍵盤攔截）；CDP 合成鍵盤
+ *  3. 以 Chrome --app 模式開頁（2026-10 改）：一般視窗的初始焦點有時落在網址列，F6 輪轉
+ *     會撞上新版工具列按鈕（問問 Google），從非互動行程（背景代理）執行時 OS 層點擊還會被
+ *     Windows 前景鎖定擋下、反把前景弄丟。app 視窗沒有網址列與工具列，焦點只會在頁面上。
+ *     OS 層合成點擊保留為後備（互動式終端機下仍有效）
+ *  4. 鍵盤一定要用 nvda.press()（OS 層、經 NVDA 鍵盤攔截）；CDP 合成鍵盤
  *     只會移動 DOM 焦點，NVDA 聽不到
  *
  * 執行期間 NVDA 會出聲朗讀、桌面視窗會被最小化——屬預期行為。
@@ -111,26 +115,51 @@ Write-Output ("clicked " + $x + "," + $y)
 `,
 );
 
+/**
+ * 找出 guidepup NVDA 的 nvda.ini。兩種安裝佈局都要認：
+ *   - 新版（@guidepup/setup 0.29+ 的 `install nvda`）：%LOCALAPPDATA%\guidepup\nvda\all\<版本>\extracted
+ *   - 舊版：解壓到 %TEMP%，路徑寫在 HKCU\SOFTWARE\Guidepup\Nvda（暫存被清掉後就失效）
+ */
+function findNvdaInis() {
+  const inis = [];
+  const base = path.join(process.env.LOCALAPPDATA || '', 'guidepup', 'nvda', 'all');
+  if (fs.existsSync(base)) {
+    for (const v of fs.readdirSync(base)) {
+      const ini = path.join(base, v, 'extracted', 'userConfig', 'nvda.ini');
+      if (fs.existsSync(ini)) inis.push(ini);
+    }
+  }
+  try {
+    const out = cp.execSync('reg query "HKCU\\SOFTWARE\\Guidepup\\Nvda"', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    for (const m of out.matchAll(/guidepup_nvda_\S+\s+REG_SZ\s+(.+)/g)) {
+      const ini = path.join(m[1].trim(), 'userConfig', 'nvda.ini');
+      if (fs.existsSync(ini)) inis.push(ini);
+    }
+  } catch (e) {
+    /* 新版不寫登錄檔，查不到是正常的 */
+  }
+  return inis;
+}
+
 /** 關掉 guidepup NVDA 的語音檢視器（置頂視窗會攔截點擊） */
 function disableSpeechViewer() {
-  try {
-    const out = cp.execSync('reg query "HKCU\\SOFTWARE\\Guidepup\\Nvda"', { encoding: 'utf8' });
-    const m = out.match(/guidepup_nvda_\S+\s+REG_SZ\s+(.+)/);
-    if (!m) return '登錄檔無 guidepup NVDA';
-    const ini = path.join(m[1].trim(), 'userConfig', 'nvda.ini');
-    if (!fs.existsSync(ini)) return 'nvda.ini 不存在';
+  const inis = findNvdaInis();
+  if (!inis.length) return '找不到 guidepup NVDA（請先 npx @guidepup/setup install nvda）';
+  let changed = 0;
+  for (const ini of inis) {
     const txt = fs.readFileSync(ini, 'utf8');
     if (/showSpeechViewerAtStartup = True/.test(txt)) {
       fs.writeFileSync(
         ini,
         txt.replace('showSpeechViewerAtStartup = True', 'showSpeechViewerAtStartup = False'),
       );
-      return '已關閉語音檢視器';
+      changed++;
     }
-    return '語音檢視器已是關閉';
-  } catch (e) {
-    return 'ERR ' + e.message;
   }
+  return changed ? `已關閉語音檢視器（${changed} 份設定）` : '語音檢視器已是關閉';
 }
 
 /** 停點壓成一行 */
@@ -202,10 +231,18 @@ function stopToLine(s) {
     // 拿掉 --enable-automation：避免產生「受自動化軟體控制」資訊列——
     // 有螢幕報讀軟體時 Chrome 會把焦點移到該資訊列播報，搶走頁面焦點
     ignoreDefaultArgs: ['--enable-automation'],
-    args: ['--no-first-run', '--window-position=100,100', '--window-size=1000,800'],
+    // --app：以「應用程式視窗」開頁面——沒有網址列與工具列，焦點只可能在頁面上。
+    // 一般視窗的初始焦點有時落在網址列，F6 輪轉又會撞上新版工具列按鈕（如「問問 Google」），
+    // 從非互動行程執行時 OS 層點擊還會被 Windows 前景鎖定擋下——app 模式一次消滅三個坑
+    args: ['--no-first-run', '--window-position=100,100', '--window-size=1000,800', `--app=${URL}`],
   });
-  const pg = (await b.pages())[0];
-  await pg.goto(URL, { waitUntil: 'load' });
+  let pg = null;
+  for (let i = 0; i < 50 && !pg; i++) {
+    pg = (await b.pages()).find((p) => p.url() === URL) || null;
+    if (!pg) await sleep(100);
+  }
+  if (!pg) throw new Error('app 視窗沒有開出測試頁');
+  await pg.waitForFunction(() => document.readyState === 'complete');
   console.log('NVDA 啟動中（Windows 可能彈出「設定」——會自動處理）…');
   await nvda.start();
   await sleep(2500);
@@ -215,27 +252,40 @@ function stopToLine(s) {
     /* 忽略 */
   }
   await sleep(600);
-  // 焦點自癒：點進頁面 → 用「探測句」確認 NVDA 讀的是本頁（而非瀏覽器 UI／別的視窗），
-  // 不像就重點擊再試（最多 4 次）。這是實測中最可靠的判準。
-  const looksWrong = (p) => /工具列|網址與搜尋列|分頁搜尋|加入書籤|視窗$|設定/.test(p || '');
+  // 焦點自癒：用「探測句」確認 NVDA 讀的是本頁（而非瀏覽器 UI／別的視窗），不像就再試。
+  // 第 1 次「什麼都不做」：app 視窗剛開出來就在前景、焦點在頁面。從非互動行程（如背景
+  // 代理）執行時，OS 層點擊反而會撞上 Windows 前景鎖定把前景弄丟，所以點擊只當後備。
+  const looksWrong = (p) =>
+    /工具列|網址與搜尋列|分頁搜尋|加入書籤|視窗$|設定|Google|^\d+\.\d+\.\d+\.\d+:\d+/.test(p || '');
   let ready = false;
+  let firstPhrases = [];
   for (let attempt = 1; attempt <= 4 && !ready; attempt++) {
-    console.log(`焦點嘗試 ${attempt}：`, ps('focus-click.ps1', String(b.process().pid)));
+    if (attempt === 1) {
+      await pg.bringToFront();
+      console.log('焦點嘗試 1：不動前景，直接讀');
+      await sleep(1500);
+    } else {
+      console.log(`焦點嘗試 ${attempt}：`, ps('focus-click.ps1', String(b.process().pid)));
+    }
     await sleep(700);
     await nvda.clearSpokenPhraseLog();
     await nvda.press('Control+Home');
     await sleep(800);
+    // Ctrl+Home 本身就會念出第一行——收下來，否則頁首那一句會漏掉
+    const atTop = ((await nvda.lastSpokenPhrase()) || '').trim();
     await nvda.next();
     await sleep(700);
     const first = ((await nvda.lastSpokenPhrase()) || '').trim();
-    console.log('  探測句：', first.slice(0, 50) || '（無）');
-    if (first && !looksWrong(first)) ready = true;
+    console.log('  探測句：', (atTop || first).slice(0, 50) || '（無）');
+    if (first && !looksWrong(atTop || first)) {
+      ready = true;
+      firstPhrases = [atTop, first].filter(Boolean);
+    }
   }
   // 瀏覽模式逐行走訪（真 NVDA 的線性化——與我們的朗讀順序直接對照）
   const phr = [];
   if (ready) {
-    const first = ((await nvda.lastSpokenPhrase()) || '').trim();
-    if (first) phr.push(first);
+    for (const p of firstPhrases) if (p !== phr[phr.length - 1]) phr.push(p);
     let same = 0,
       prev = null;
     for (let i = 0; i < 40; i++) {
@@ -266,11 +316,16 @@ function stopToLine(s) {
   console.log('我們的模擬（可聚焦物件）：');
   ourLines.forEach((l, i) => console.log('  ' + String(i + 1).padStart(2) + '  ' + l));
   console.log('═'.repeat(80));
-  // 用頁面專屬詞判斷（瀏覽器 UI 也有「按鈕／編輯區」，不能拿來判斷）
-  const ok = phr.some((p) => /台中|滑桿|功能表按鈕|導覽區|多行/.test(p));
+  // 判斷 NVDA 讀的是不是本頁：與我們模擬的停點內容有交集才算（瀏覽器 UI 也有
+  // 「按鈕／編輯區」這類角色詞，不能拿角色判斷；過去寫死預設頁的專屬詞，換頁就誤報）
+  const probes = ro.stops
+    .map((s) => (s.text || s.name || '').replace(/\s+/g, ''))
+    .filter((t) => t.length >= 2)
+    .map((t) => t.slice(0, 4));
+  const ok = phr.some((p) => probes.some((t) => p.replace(/\s+/g, '').includes(t)));
   if (!ok) {
-    console.log('⚠ 本輪 NVDA 讀到的是瀏覽器 UI 而非頁面控制項（Windows 焦點時序不穩定），');
-    console.log('  直接重跑一次通常即可；成功時會逐一念出「城市, 下拉式方塊, 台中」等頁面控制項。');
+    console.log('⚠ 本輪 NVDA 讀到的是瀏覽器 UI 而非頁面內容（Windows 焦點時序不穩定），');
+    console.log('  直接重跑一次通常即可；成功時會逐行念出頁面上的文字與控制項。');
   }
   fs.writeFileSync(
     path.join(__dirname, 'last-run.json'),

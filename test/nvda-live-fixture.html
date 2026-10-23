@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>動態播報對照頁</title>
+  </head>
+  <body>
+    <!-- 動態播報（即時區域）的真 NVDA 對照頁：test/nvda/live.js 依序觸發各種變動 -->
+    <h1>動態播報對照頁</h1>
+    <!-- 每個情境都由「真鍵盤按下這顆鈕」觸發：實測由計時器或自動化指令直接改 DOM 時，
+         NVDA 不一定播報；使用者操作觸發的變動才是真實情境（按送出 → 跳錯誤訊息） -->
+    <button id="trigger" type="button" onclick="window.__runCase && window.__runCase()">觸發</button>
+    <div id="polite" role="status"></div>
+    <div id="invalid" aria-live=""></div>
+    <div id="host"></div>
+    <p>頁尾文字</p>
+  </body>
+</html>

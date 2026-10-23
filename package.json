@@ -51,6 +51,7 @@
     "test:cli": "node test/cli/run-cli-unit.js",
     "test:docs": "node test/docs/readme-claims.js",
     "test:nvda": "node test/nvda/compare.js",
+    "test:nvda:live": "node test/nvda/live.js",
     "scan": "node cli/ramp-scan.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
@@ -65,7 +66,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@guidepup/guidepup": "^0.28.1",
+    "@guidepup/guidepup": "^0.36.4",
     "adm-zip": "^0.6.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.2",

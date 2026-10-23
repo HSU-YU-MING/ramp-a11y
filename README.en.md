@@ -100,12 +100,13 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 59 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 65 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
 npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 44 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
 npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 54 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
+npm run test:nvda:live  # Real-NVDA live-region (dynamic announcement) comparison
 ```
 
 Everything except e2e/nvda runs automatically on every push/PR via [GitHub Actions](.github/workflows/ci.yml); e2e also runs in CI under xvfb with a stable Chrome. See the Traditional-Chinese README for e2e troubleshooting.
@@ -127,7 +128,7 @@ Ramp targets Taiwan's "Website Accessibility Guidelines", currently in a transit
 | Version | Aligns with | Success criteria | Applies |
 |---------|-------------|------------------|---------|
 | 110.07 | WCAG 2.1 | 78 | current, until 2026-11-29 |
-| 115 amendment | WCAG 2.2 | 86 (adds 9, removes 4.1.1) | **effective 2026-11-30** |
+| 115 amendment | WCAG 2.2 | 87 (adds 9; 4.1.1 keeps its number marked "removed as obsolete", so 86 apply) | **effective 2026-11-30** |
 
 Differences that affect specific criteria (4.1.1, 2.5.8) are annotated in the results and report. Official PDFs are included under `docs/`.
 

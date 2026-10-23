@@ -118,14 +118,30 @@ globals 各不相同；Node 端**刻意不含瀏覽器全域**，好讓 scripts 
 
 ### `npm test` 是 e2e，不是單元測試
 
-要快速迭代用 `npm run test:unit`（jsdom，秒級）。e2e 以 **`headless: false` 開真實視窗**，
+要快速迭代用 `npm run test:unit`（jsdom，秒級）。
+
+**本機 e2e「一聲不響地結束」先看 node 版本**（2026-10）：Node 24（Windows）對來源路徑含
+非 ASCII 字元的資料夾做遞迴 `fs.cpSync` 會原生崩潰（0xC0000409、零輸出）——本 repo 在
+`D:\擴充功能\…` 下正好中。`run-e2e.js` 已改用自寫的 `copyRecursive`，**不要改回 cpSync**。
+另外 `npm test | tail` 這類管線拿到的是 `tail` 的結束碼：判斷 e2e 過沒過要看
+`==== N/M PASS ====` 那行，不要只看 exit code。e2e 以 **`headless: false` 開真實視窗**，
 需要 Chrome 137+（`--load-extension` 已被移除，改用 Puppeteer 的 `installExtension`）。
 CI 那邊靠 xvfb + `--no-sandbox`（**只在 `process.env.CI` 為真時附加**，本機維持沙箱）。
 
-`npm run test:nvda` 會真的把 NVDA 叫起來出聲，需要互動桌面，**不進 CI**。
-`test/nvda/compare.js` 的檔頭寫著「實測踩雷後的成果，勿隨意簡化」，四個坑（NVDA 啟動時
-Windows 設定頁搶焦點、語音檢視器置頂擋點擊、必須用 OS 層合成點擊才轉移鍵盤焦點、
-Tab 必須用 `nvda.press()` 而非 CDP 合成鍵盤）都是真的踩過的——照做，不要簡化。
+`npm run test:nvda`（靜態逐行）與 `npm run test:nvda:live`（動態播報）會真的把 NVDA 叫起來
+出聲，需要互動桌面，**不進 CI**。`test/nvda/compare.js` 的檔頭寫著「實測踩雷後的成果，
+勿隨意簡化」，四個坑（NVDA 啟動時 Windows 設定頁搶焦點、語音檢視器置頂擋點擊、一般視窗
+焦點會卡網址列所以改用 Chrome `--app` 模式、鍵盤必須用 `nvda.press()` 而非 CDP 合成鍵盤）
+都是真的踩過的——照做，不要簡化。
+
+2026-10 重跑時另外踩到的（細節見 test/nvda/README.md）：
+- **安裝指令**：`@guidepup/setup` 0.29 起是 `npx @guidepup/setup install nvda`，且需要
+  `@guidepup/guidepup` 0.36+（0.28 會報 manifest 損毀）。NVDA 現在裝在
+  `%LOCALAPPDATA%\guidepup\nvda\`，不會再被暫存清理掉。
+- **從背景代理執行時**，OS 層點擊會撞上 Windows 前景鎖定反把前景弄丟——`--app` 模式下
+  第一次嘗試什麼都不做反而最穩，點擊只當後備。
+- **動態播報只對「真鍵盤觸發」的變動可靠播報**：計時器或 CDP 直接改 DOM，NVDA 不一定念。
+  live.js 因此每個情境都用 `nvda.press('Enter')` 按觸發鈕。
 
 ## 從 git log 挖到的教訓
 
