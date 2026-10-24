@@ -17,7 +17,7 @@
 | 擴充套件 `Ramp 無障礙檢測` | `manifest.json` 的 `version` | `npm run pack` 產 zip → **人工上傳商店** |
 | CLI `cornhsu-ramp-scan`（npm） | `package.json` 的 `version` | 推 `v*` tag → `release.yml` 自動發佈 |
 
-兩者版本號**刻意保持一致**，有測試守門。`npm run release:prep -- 1.2.0` 會一次寫進
+兩者版本號**刻意保持一致**，有測試守門。`npm run release:prep -- 2.0.0` 會一次寫進
 `package.json` / `package-lock.json` / `manifest.json` 三處（Chrome 商店讀 zip 內的
 manifest，必填且必須高於線上版，沒辦法從 tag 推導）。**`release:prep` 刻意不 commit、
 不打 tag、不 push**——發版有後果，最後那一下要人自己按。
@@ -201,7 +201,14 @@ ed23f5b 釘的 js-yaml 4.3.1／brace-expansion 1.1.18 後來又各中一個 high
 
 ## 時限性待辦（有硬期限）
 
-**2026-11-30 是台灣「網站無障礙規範」115 年修正版的生效日**，當天要發 v1.2.0 做版本切換：
+**下一版是 v2.0.0（2026-10 稽核修正，尚未發）**：升 major 是因為 CLI 有破壞性變更——
+engines 抬到 Node 22.12、Chrome 沙箱改為預設保留、離開碼契約改變（參數錯誤 1、多頁全數
+失敗 2、`--fail-on` 3）。擴充套件端全是修復，但兩個成品共用版本號，一起跳。CHANGELOG
+沒有獨立檔案，破壞性變更要寫在 GitHub Release 說明與兩份 README 的路線圖。
+
+**2026-11-30 是台灣「網站無障礙規範」115 年修正版的生效日**，當天要發 v2.1.0 做版本切換
+（原本排 v1.2.0；稽核修正先佔了 2.0.0，規範切版順移成 minor——對照表本來就承諾跟著官方
+規範走，不算破壞性）：
 
 - 移除 `content/scanner.js` 中 `duplicate-id` 的重新啟用（新版已刪除準則 4.1.1）
 - 退役 `data/rules-map.json` 裡的 `duplicate-id` 條目
@@ -227,7 +234,8 @@ ed23f5b 釘的 js-yaml 4.3.1／brace-expansion 1.1.18 後來又各中一個 high
 `D:\網站\portfolio\doc\ramp-a11y.md`（作品集上的專案文件）是 **repo README 的舊副本**，
 停在 2026-07-23 之前：完全沒提到 `cli/`（`cornhsu-ramp-scan` 一次都沒出現），測試清單
 少了 `test:self` / `test:cli` / `test:docs`、項數也是舊的，路線圖還把「全站爬掃 CLI」寫成
-未完成、把規範切換版本寫成 v1.1.0（README 現在是 v1.2.0，因為 v1.1.0 已經拿去上架了）。
+未完成、把規範切換版本寫成 v1.1.0（README 現在是 v2.1.0：v1.1.0 已經拿去上架、v2.0.0 是
+2026-10 的稽核修正版）。
 **這個 repo 這邊是對的**；要修的是作品集那份（走 `portfolio-release-update` 的流程）。
 
 ## 開工慣例

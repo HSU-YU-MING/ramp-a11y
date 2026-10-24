@@ -2,7 +2,7 @@
 /**
  * release-prep — 發版前把版本號一次寫到所有該寫的地方
  *
- *   npm run release:prep -- 1.2.0
+ *   npm run release:prep -- 2.0.0
  *
  * 為什麼需要這支：版本號有三個地方要一致，而且**沒得減少**——
  *   package.json      npm 發佈用（release.yml 會比對 tag 與它是否相同）
@@ -57,10 +57,10 @@ module.exports = { bumpManifestVersion };
 function main() {
   const target = process.argv[2];
   if (!target) {
-    die('請指定版本號，例如：npm run release:prep -- 1.2.0');
+    die('請指定版本號，例如：npm run release:prep -- 2.0.0');
   }
 
-  // 只收 X.Y.Z：Chrome manifest 的 version 不接受 semver 的預發布標記（1.2.0-beta.1），
+  // 只收 X.Y.Z：Chrome manifest 的 version 不接受 semver 的預發布標記（2.0.0-beta.1），
   // npm 則不接受 Chrome 允許的四段式以外的怪格式。三段純數字是兩邊都吃的交集。
   if (!/^\d+\.\d+\.\d+$/.test(target)) {
     die(

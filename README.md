@@ -205,10 +205,10 @@ CI 已把上述環境條件都處理好（xvfb＋stable Chrome＋`CI` 環境變�
 且上傳版本必須高於線上版，無法改由 tag 推導）。`release:prep` 讓「你手輸版本號」只發生一次：
 
 ```sh
-npm run release:prep -- 1.2.0   # 三處一起寫；不 commit、不打 tag
+npm run release:prep -- 2.0.0   # 三處一起寫；不 commit、不打 tag
 ```
 
-它會擋掉預發布標記（`1.2.0-beta.1`，Chrome manifest 不收）與沒有變高的版本號，寫完再讀一次
+它會擋掉預發布標記（`2.0.0-beta.1`，Chrome manifest 不收）與沒有變高的版本號，寫完再讀一次
 確認三處真的一致，然後印出接下來的指令。tag 仍是發版的觸發器與最終真相源——推 `v*` tag 會觸發
 [release.yml](.github/workflows/release.yml) 自動發佈 npm 套件（發佈前會跑 `prepublishOnly` 閘門）；
 擴充套件另走 `npm run pack` 產生 `dist/ramp-a11y-v*.zip` 再上傳商店。
@@ -305,7 +305,10 @@ Chrome 沙箱；容器等環境跑不起來時才開。環境變數 `CI` 為真�
 
 **時限性待辦**
 
-- [ ] **2026-11-30（115 年修正版生效日）**：發布下一版本（v1.2.0）做規範切換（v1.1.0 已為 NVDA 報讀預覽版上架）
+- [ ] **v2.0.0（2026-10 稽核修正版）**：動態播報與朗讀順序以真 NVDA 校準、CLI 掃描嚴格 CSP 網站、
+  離開碼契約與 `--fail-on`。CLI 有破壞性變更所以升 major：需 Node.js 22.12+、Chrome 沙箱改為預設保留
+  （容器環境需加 `--no-sandbox`）、參數錯誤改為離開碼 1、多頁全數失敗改為 2（v1.1.0 為 NVDA 報讀預覽版）
+- [ ] **2026-11-30（115 年修正版生效日）**：發布 v2.1.0 做規範切換
   - 移除 [content/scanner.js](content/scanner.js) 中 `duplicate-id` 的重新啟用（新版規範已刪除 4.1.1）
   - 退役 rules-map 中的 `duplicate-id` 條目
   - 清除 4.1.1 與 2.5.8 條目的過渡期附註（`noteZh`）
