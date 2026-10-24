@@ -100,7 +100,7 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 128 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 131 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
 npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 76 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)

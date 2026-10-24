@@ -73,22 +73,34 @@ jobs:
             exit 1
           fi
 
-      # 認證自動切換（同 PolyMigrate 慣例）：
-      #   有 NPM_TOKEN secret → token（首次發布必須；信任發布要先有套件才設定得了）
-      #   沒有 NPM_TOKEN      → OIDC 信任發布（零長效金鑰）
-      # 首發後在 npmjs.com 設好 trusted publisher，再刪掉 NPM_TOKEN，這裡就自動改走 OIDC。
-      # 注意：不是用 NODE_AUTH_TOKEN——那個變數設成空字串會讓 npm 拿空 token 驗證而不改走 OIDC。
+      # 認證只走 npm 信任發布（OIDC）：GitHub 簽發 OIDC token，npm 換短效金鑰並自動簽
+      # provenance，沒有任何長效金鑰（同 PolyMigrate／Parity）。
+      # 1.1.0 首發用的 NPM_TOKEN 分支已經拿掉：它「有 secret 就優先用」，首發後 secret 忘了刪，
+      # 信任發布就從來沒被用過（npmjs.com 上的設定還因此過期），直到 2026-10 npm 收緊「可繞過
+      # 2FA 的 token」才在 v2.0.0 發佈時 404 爆出來。
+      # 所以下面先守門：環境或 .npmrc 裡出現 npm token 就直接失敗，不讓 npm 拿它去認證。
+      # 仍然成立：不要設 NODE_AUTH_TOKEN（也不要讓 setup-node 寫 registry-url）——那個變數
+      # 設成空字串會讓 npm 拿空 token 去驗證而不改走 OIDC（actions/setup-node#1551）。
+      # 信任發布的設定在 npmjs.com → 套件 → Settings → Trusted Publisher
+      #（GitHub Actions：HSU-YU-MING／ramp-a11y／release.yml，environment 留空）。
       - name: Publish to npm
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            echo "認證：token（首次發布）"
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
-          else
-            echo "認證：OIDC 信任發布"
-          fi
+          # 只看有沒有，不印出內容
+          for v in $(compgen -e); do
+            case "${v,,}" in
+              npm_token|node_auth_token|npm_config_*auth*)
+                echo "::error::環境變數 $v 看起來是 npm token；本套件只走 OIDC 信任發布，請拿掉它"
+                exit 1 ;;
+            esac
+          done
+          for f in ~/.npmrc .npmrc "${NPM_CONFIG_USERCONFIG:-}"; do
+            if grep -qs '_auth' "$f"; then
+              echo "::error::$f 裡有 npm 認證設定（_auth／_authToken）；本套件只走 OIDC 信任發布，請拿掉它"
+              exit 1
+            fi
+          done
+          echo "認證：OIDC 信任發布"
           NAME=$(node -p "require('./package.json').name")
           VER=$(node -p "require('./package.json').version")
           # 冪等：版本已存在就跳過而不報錯（重跑 workflow 不會被擋）

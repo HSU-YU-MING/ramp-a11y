@@ -694,6 +694,14 @@ check(
     .sort();
   eq('release.yml 等待的 check-run ＝ ci.yml 的 job id', awaited.join(','), ciJobs.join(','));
   check('ci.yml 有 npm audit --omit=dev 關卡', /npm audit --omit=dev/.test(ciYml));
+  // npm 只走 OIDC 信任發布：workflow 不得引用長效 token，且要有「出現 token 就失敗」的守門
+  //（v2.0.0 首次發佈就是被殘留的 NPM_TOKEN 搶先、npm 收緊規定後 404）
+  check(
+    'release.yml 不引用 NPM_TOKEN／NODE_AUTH_TOKEN secret',
+    !/secrets\.(NPM_TOKEN|NODE_AUTH_TOKEN)/.test(relYml),
+  );
+  check('release.yml 有 npm token 守門', /compgen -e/.test(relYml) && /_auth/.test(relYml));
+  check('release.yml 有 id-token: write（OIDC）', /id-token:\s*write/.test(relYml));
 }
 
 scanDone.then(async () => {
