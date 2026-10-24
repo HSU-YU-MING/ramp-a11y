@@ -1,6 +1,6 @@
 {
   "name": "cornhsu-ramp-scan",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "全站無障礙檢測 CLI — 爬掃整個網站並對應台灣「網站無障礙規範」，是 Ramp（ramp-a11y）擴充套件的命令列版。Full-site web-accessibility scanner CLI mapped to Taiwan's Website Accessibility Guidelines.",
   "bin": {
     "ramp-scan": "cli/ramp-scan.js"
@@ -63,7 +63,7 @@
     "prepublishOnly": "npm run lint && npm run test:unit && npm run test:self && npm run test:cli && npm run test:docs"
   },
   "dependencies": {
-    "puppeteer-core": "^25.6.0"
+    "puppeteer-core": "^25.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
