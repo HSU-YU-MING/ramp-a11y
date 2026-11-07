@@ -422,6 +422,11 @@ body {
   color: var(--color-text-muted);
 }
 
+/* 新增準則人工檢核的分組說明 */
+.manual-note {
+  margin: 0 0 8px;
+}
+
 /* 版本差異等補充附註（如 115 年修正版的準則增刪） */
 .issue-note {
   font-size: 12px;

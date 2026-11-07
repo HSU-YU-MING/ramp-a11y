@@ -206,10 +206,55 @@ async function openPopup(browser, sw) {
         'iframe 缺少標題',
         'ARIA 缺少必要屬性',
         'ARIA 屬性值無效',
-        '出現重複的 id',
         '文字與背景對比不足',
       ];
       const missing = expectedZh.filter((t) => !titles.includes(t));
+      check('T3h 已退役 duplicate-id（115 年修正版刪除 4.1.1）', !titles.includes('出現重複的 id'));
+
+      // ===== 人工檢核項目可展開，內容、檢測碼與「不適用」選項都要出現 =====
+      const manualBody = await popup.evaluate(() => {
+        const header = [...document.querySelectorAll('.issue-header')].find((h) =>
+          h.textContent.includes('登入不可只靠認知測試'),
+        );
+        header.click();
+        header.scrollIntoView();
+        const body = header.nextElementSibling;
+        return {
+          visible: !body.hidden,
+          text: body.textContent,
+          options: [...body.querySelectorAll('select option')].map((o) => o.textContent),
+        };
+      });
+      check(
+        'T3i 人工檢核項目可展開，內容與檢測碼正確',
+        manualBody.visible &&
+          manualBody.text.includes('怎麼檢查') &&
+          manualBody.text.includes('HM2330800E') &&
+          manualBody.options.join('/') === '未確認/通過/不通過/不適用',
+        manualBody.options.join('/'),
+      );
+      await popup.screenshot({ path: OUT + '/popup-manual-checks.png' });
+      // 收合並回到頂端：後面的測試都以第一個 .issue-header 為準
+      await popup.evaluate(() => {
+        [...document.querySelectorAll('.issue-header')]
+          .find((h) => h.textContent.includes('登入不可只靠認知測試'))
+          .click();
+        document.getElementById('issues').scrollTop = 0;
+      });
+
+      // ===== 新增準則人工檢核：預設目標 AA → 列出 A／AA 五條，AAA 三條不列 =====
+      const manualGroup = headings.find((h) => h.includes('115 年修正版新增準則'));
+      check(
+        'T3f 新增準則人工檢核分組（目標 AA 列 5 條）',
+        Boolean(manualGroup) && manualGroup.includes('（5 項）'),
+        manualGroup || '找不到分組',
+      );
+      check(
+        'T3g 目標 AA 列出 A／AA 項目，不列 AAA',
+        titles.includes('登入不可只靠認知測試') &&
+          titles.includes('鍵盤焦點不可被完全遮住') &&
+          !titles.includes('鍵盤焦點不可被遮住任何一部分'),
+      );
       check(
         'T3 對應表規則以繁中顯示',
         missing.length === 0,
@@ -304,7 +349,11 @@ async function openPopup(browser, sw) {
         reportHtml.includes('限制聲明') &&
         reportHtml.includes('對比值(最小)') && // 官方準則名稱有進報告
         reportHtml.includes('HM1240200C') && // 官方檢測碼有進報告（document-title）
-        reportHtml.includes('人工複核自評'); // 自評摘要與狀態有進報告
+        reportHtml.includes('人工複核自評') && // 自評摘要與狀態有進報告
+        reportHtml.includes('新增準則人工檢核：') && // 新增準則摘要
+        reportHtml.includes('GN3330900E') && // 報告列出全部，含超出目標的 AAA
+        reportHtml.includes('115 年修正版（對齊 WCAG 2.2') &&
+        !reportHtml.includes('現行 110.07'); // 不可再把舊版寫成現行
       check(
         'T9 匯出報告產生且內容正確',
         reportOk,
@@ -353,6 +402,7 @@ async function openPopup(browser, sw) {
 
       // ===== T12（前半）：在快取還原的 popup 中設定人工複核自評 =====
       await popup2.select('.review-select', 'pass');
+      await popup2.select('.review-select[data-axe-id="manual:3.3.8"]', 'na');
       await sleep(300);
 
       // T6b：還原後高亮仍可用
@@ -382,6 +432,11 @@ async function openPopup(browser, sw) {
       // ===== T12（後半）：自評狀態跨 popup 開關與頁面重整仍保存 =====
       const rv = await popup3.$eval('.review-select', (el) => el.value);
       check('T12 人工複核自評持久化', rv === 'pass', 'value=' + rv);
+      const manualRv = await popup3.$eval(
+        '.review-select[data-axe-id="manual:3.3.8"]',
+        (el) => el.value,
+      );
+      check('T12b 人工檢核「不適用」持久化', manualRv === 'na', 'value=' + manualRv);
       await popup3.close();
     });
 

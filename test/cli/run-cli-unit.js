@@ -348,6 +348,50 @@ fs.rmSync(tmp, { recursive: true, force: true });
     calls.some((c) => c.startsWith('ua:') && c.includes(`ramp-scan/${pkgVer}`)),
   );
 
+  // ===== 115 年修正版新增準則的人工檢核清單 =====
+  {
+    const report = cli.manualChecksReport('AA');
+    check(
+      '人工檢核：報告帶全部八條，並標示目標內五條',
+      report.length === 8 && report.filter((c) => c.withinTarget).length === 5,
+    );
+    const pageHtml = cli.buildPageHtml({
+      scannedAt: '2026-11-30T00:00:00.000Z',
+      finalUrl: 'https://example.test/',
+      version: '0.0.0',
+      targetLevel: 'AA',
+      summary: {
+        violations: 0,
+        affectedElements: 0,
+        byLevel: { A: 0, AA: 0, AAA: 0, unmapped: 0 },
+        bestPractice: 0,
+        needsManualReview: 0,
+      },
+      violations: [],
+    });
+    check(
+      '人工檢核：單頁報告列出全部，含超出目標的 AAA',
+      pageHtml.includes('需人工檢核（8 項）') &&
+        pageHtml.includes('HM2330800E') &&
+        pageHtml.includes('GN3330900E'),
+    );
+    const siteHtml = cli.buildSiteHtml({
+      scannedAt: '2026-11-30T00:00:00.000Z',
+      source: 'https://example.test/',
+      version: '0.0.0',
+      targetLevel: 'AA',
+      crawl: { mode: 'crawl', pagesFailed: 0, truncated: false },
+      siteSummary: cli.aggregate([]),
+      pages: [],
+    });
+    check('人工檢核：全站報告也列出', siteHtml.includes('需人工檢核（8 項）'));
+    eq(
+      '人工檢核：沒有違規時 --fail-on 離開碼仍是 0（清單不影響離開碼）',
+      cli.singlePageExitCode({ byLevel: { A: 0, AA: 0, AAA: 0, unmapped: 0 } }, 'violations', 'AA'),
+      0,
+    );
+  }
+
   const fails = results.filter((r) => !r.ok).length;
   console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
   process.exit(fails ? 1 : 0);

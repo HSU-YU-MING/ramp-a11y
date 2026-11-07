@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 const { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
+const { MANUAL_CHECKS, manualChecksForLevel } = require('../shared/manual-checks.js');
 
 const REPO = path.resolve(__dirname, '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
@@ -256,6 +257,15 @@ function buildPageReport(url, finalUrl, title, scan) {
   };
 }
 
+/**
+ * 115 年修正版新增、axe 無法判定的準則。報告一律帶全部，並標示是否在目標等級內；
+ * 這些項目與 --fail-on 無關，不會改變離開碼。
+ */
+function manualChecksReport(targetLevel) {
+  const shownIds = new Set(manualChecksForLevel(targetLevel).shown.map((c) => c.id));
+  return MANUAL_CHECKS.map((c) => ({ ...c, withinTarget: shownIds.has(c.id) }));
+}
+
 // ===== 訪問單一頁面：載入 → 掃描 → 蒐集連結 =====
 const INJECT = ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'];
 async function visitPage(browser, url, opts) {
@@ -477,7 +487,7 @@ function targetSplit(byLevel, targetLevel) {
 // ===== 離開碼與啟動參數的決策（純函式，test:cli 直接驗證；main 只負責套用）=====
 
 /** --fail-on violations 是否觸發：只看「目標等級內、已對應台灣準則」的違規——
- *  --level A 的 CI 不該因為 AAA、未對應（如台灣尚未採用的 WCAG 2.2）或最佳實務而變紅 */
+ *  --level A 的 CI 不該因為 AAA、未對應（如對應表沒收錄的 WCAG 2.2）或最佳實務而變紅 */
 function failOnTriggered(byLevel, failOn, targetLevel) {
   return failOn === 'violations' && targetSplit(byLevel || {}, targetLevel).within > 0;
 }
@@ -563,6 +573,13 @@ function aggregateByLanguage(pages) {
 }
 
 // ===== 主控台摘要 =====
+function printManualChecksLine(targetLevel) {
+  const { shown } = manualChecksForLevel(targetLevel);
+  console.log(
+    `  新增準則      ${shown.length} 條需人工檢核（axe 無法判定，不影響離開碼；詳見報告）`,
+  );
+}
+
 function printPageSummary(report) {
   const s = report.summary;
   console.log('\n── Ramp 檢測摘要 ──');
@@ -577,6 +594,7 @@ function printPageSummary(report) {
   console.log(`    目標 ${report.targetLevel}     目標內 ${tsp.within} · 超出目標 ${tsp.beyond}`);
   console.log(`  最佳實務建議  ${s.bestPractice}`);
   console.log(`  需人工複核    ${s.needsManualReview}`);
+  printManualChecksLine(report.targetLevel);
 }
 
 function printSiteSummary(site) {
@@ -593,6 +611,7 @@ function printSiteSummary(site) {
   const tsp = targetSplit(a.byLevel, site.targetLevel);
   console.log(`    目標 ${site.targetLevel}     目標內 ${tsp.within} · 超出目標 ${tsp.beyond}`);
   console.log(`  需人工複核    ${a.needsManualReviewTotal}`);
+  printManualChecksLine(site.targetLevel);
   if (a.topRules.length) {
     console.log('\n  最常見的障礙：');
     a.topRules.slice(0, 8).forEach((r) => {
@@ -652,7 +671,7 @@ function ruleDetailHtml(r) {
       (r.checkCodes && r.checkCodes.length
         ? `・檢測碼 ${r.checkCodes.map(escapeHtml).join('、')}`
         : '')
-    : `${r.isBestPractice ? '最佳實務建議（非規範必要）' : r.isWcag22 ? 'WCAG 2.2 新增（台灣尚未採用）' : '未對應台灣準則'}・axe ${escapeHtml(r.axeId)}`;
+    : `${r.isBestPractice ? '最佳實務建議（非規範必要）' : r.isWcag22 ? 'WCAG 2.2 新增（115 年修正版起適用）' : '未對應台灣準則'}・axe ${escapeHtml(r.axeId)}`;
   const count = r.pages != null ? `${r.pages} 頁 / ${r.elements} 元素` : `×${r.elements}`;
   const targets = (r.sampleTargets || [])
     .map((t) => `<li><code>${escapeHtml(t)}</code></li>`)
@@ -708,6 +727,20 @@ ${bodyHtml}
 </html>`;
 }
 
+/** 115 年修正版新增準則的人工檢核清單（單頁與全站報告共用，一律列出全部） */
+function manualChecksHtml() {
+  const items = MANUAL_CHECKS.map(
+    (c) => `<section class="issue">
+    <h4><span class="badge">${escapeHtml(c.level)}</span>${escapeHtml(c.title)}</h4>
+    <p class="meta">台灣規範 ${escapeHtml(c.guideline)} ${escapeHtml(c.guidelineName)}（${escapeHtml(c.category)}）・等級 ${escapeHtml(c.level)}・檢測碼 ${c.checkCodes.map(escapeHtml).join('、')}</p>
+    <p><strong>什麼時候適用：</strong>${escapeHtml(c.appliesWhen)}</p>
+    <p><strong>怎麼檢查：</strong>${escapeHtml(c.check)}</p>
+    <p><strong>如何修正：</strong>${escapeHtml(c.how)}</p>
+  </section>`,
+  ).join('');
+  return `<h2>115 年修正版新增準則・需人工檢核（${MANUAL_CHECKS.length} 項）</h2><p class="info">axe 無法自動判定這些準則，請自行確認；未確認不代表通過，也不影響離開碼。</p>${items}`;
+}
+
 function reportHeader(title, lines) {
   return `<header><h1>${escapeHtml(title)}</h1><p class="info">${lines.map(escapeHtml).join('<br>')}</p></header>`;
 }
@@ -752,7 +785,7 @@ function buildSiteHtml(site) {
   return docShell(
     `Ramp 全站報告 — ${site.source}`,
     header,
-    `${stats}${langHtml}${topRules}${worst}${perPage}`,
+    `${stats}${langHtml}${topRules}${worst}${manualChecksHtml()}${perPage}`,
   );
 }
 
@@ -773,7 +806,11 @@ function buildPageHtml(out) {
   const rulesHtml = out.violations.length
     ? out.violations.map((v) => ruleDetailHtml({ ...v, elements: v.nodeCount })).join('')
     : '<p>未發現自動化可偵測的違規。</p>';
-  return docShell(`Ramp 報告 — ${out.finalUrl}`, header, `${stats}<h2>違規明細</h2>${rulesHtml}`);
+  return docShell(
+    `Ramp 報告 — ${out.finalUrl}`,
+    header,
+    `${stats}<h2>違規明細</h2>${rulesHtml}${manualChecksHtml()}`,
+  );
 }
 
 // ===== 輸出 =====
@@ -911,6 +948,7 @@ async function main() {
         scannedAt: new Date(started).toISOString(),
         targetLevel: values.level,
         ...report,
+        manualChecks: manualChecksReport(values.level),
       };
       const base = safeHost(out.finalUrl);
       const written = [];
@@ -961,6 +999,7 @@ async function main() {
         truncated: result.truncated,
       },
       siteSummary: aggregate(result.pages),
+      manualChecks: manualChecksReport(values.level),
       byLanguage: aggregateByLanguage(result.pages),
       pages: result.pages,
     };
@@ -1013,6 +1052,7 @@ module.exports = {
   mapPool,
   buildSiteHtml,
   buildPageHtml,
+  manualChecksReport,
   failOnTriggered,
   singlePageExitCode,
   multiPageExitCode,

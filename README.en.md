@@ -36,6 +36,7 @@ Click the Ramp toolbar icon on any normal page → "開始檢測" (Start scan). 
 - **Reading-order preview**: linearizes the whole page into NVDA's actual reading sequence (up to 500 stops per pass, truncation flagged), marks landmark/table/list enter-exit boundaries, and flags **order mismatches** (visual left-to-right order vs. reading order on the same row — WCAG 1.3.2).
 - **Live-region monitoring**: a `MutationObserver` watches `aria-live` / `role=alert` / `status` / `log` regions and lists what NVDA would auto-announce, with priority (`assertive` vs `polite`). Monitoring auto-stops ~3 minutes after the popup closes; the latest 100 captured announcements are kept.
 - **Honest self/manual split**: axe `incomplete` results are marked "needs manual review" — no misleading "fully compliant" verdict.
+- **Manual checklist for new criteria**: the 8 criteria added by the 115 amendment that axe cannot judge are listed with when they apply, how to check them, and official check codes. Unconfirmed never counts as passed, and the CLI report lists them without affecting the exit code.
 - **Manual-review self-assessment**: mark review items pass/fail, persisted per URL and included in the exported report.
 - **Report export**: one-click self-contained HTML report (open to read, print to PDF; up to 20 affected elements listed per rule, with the total noted).
 - **Dark mode**, **target level** (default AA), **result filter** (all / violations / review), and **scan delay** (3 / 10 s for animated or lazy-loaded pages).
@@ -100,11 +101,11 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 131 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 148 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
-npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 76 checks
+npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 80 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
-npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 54 checks
+npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 59 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
 npm run test:nvda:live  # Real-NVDA live-region (dynamic announcement) comparison
 ```
@@ -117,20 +118,22 @@ Releasing: the version lives in three places that none of them can drop — `pac
 
 - **Automated checks cover only ~30–40%** of accessibility problems. Keyboard flow, real screen-reader experience, and whether content is *appropriate* still require human review.
 - Results are **not** equivalent to any official accessibility accreditation; apply through the official process if you need a badge.
-- The mapping table covers **73 entries** (72 actual axe rules plus a documentation-only entry for 2.4.7 Focus Visible) across **27 criteria** of the Taiwan standard, of which **26 auto-detectable**; the rest (keyboard traps, caption quality, reading order, …) inherently require manual testing.
+- The mapping table covers **72 entries** (71 actual axe rules plus a documentation-only entry for 2.4.7 Focus Visible) across **26 criteria** of the Taiwan standard, of which **25 auto-detectable**; the rest (keyboard traps, caption quality, reading order, …) inherently require manual testing.
 - Cross-origin iframe content is out of scope (MVP limitation).
 - Shadow DOM: the issue scan handles it (via axe; click-to-highlight may not locate those elements), but reading order and live-region monitoring do not descend into shadow roots yet.
 
 ## Standards & versions
 
-Ramp targets Taiwan's "Website Accessibility Guidelines", currently in a transition between two versions:
+Ramp targets the 115 amendment of Taiwan's "Website Accessibility Guidelines":
 
 | Version | Aligns with | Success criteria | Applies |
 |---------|-------------|------------------|---------|
-| 110.07 | WCAG 2.1 | 78 | current, until 2026-11-29 |
-| 115 amendment | WCAG 2.2 | 87 (adds 9; 4.1.1 keeps its number marked "removed as obsolete", so 86 apply) | **effective 2026-11-30** |
+| 110.07 | WCAG 2.1 | 78 | applied until 2026-11-29 |
+| 115 amendment | WCAG 2.2 | 87 (adds 9; 4.1.1 keeps its number marked "removed as obsolete", so 86 apply) | **current, effective 2026-11-30** |
 
-Differences that affect specific criteria (4.1.1, 2.5.8) are annotated in the results and report. Official PDFs are included under `docs/`.
+4.1.1 is no longer checked. 2.5.8 is checked by axe's `target-size` rule, and the other 8 new criteria appear as a manual checklist. Official PDFs are included under `docs/`.
+
+The download page of Freego, the official checker, still said 110.07 when checked on 2026-11-08. Confirm which version the official process accepts before applying for a badge.
 
 ## License & credits
 

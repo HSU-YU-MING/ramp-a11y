@@ -758,6 +758,102 @@ scanDone.then(async () => {
   host.remove();
   politeHost.remove();
 
+  // ===== 115 年修正版切換：新增準則人工檢核清單與 4.1.1 退役 =====
+  {
+    const MC = require(path.join(REPO, 'shared/manual-checks.js'));
+    const rules = JSON.parse(fs.readFileSync(path.join(REPO, 'data/rules-map.json'), 'utf8'));
+    // 官方全文 docs/tw-web-accessibility-spec-115.pdf 第 35–44 頁的等級
+    const official = {
+      '2.4.11': 'AA',
+      '2.4.12': 'AAA',
+      '2.4.13': 'AAA',
+      '2.5.7': 'AA',
+      '3.2.6': 'A',
+      '3.3.7': 'A',
+      '3.3.8': 'AA',
+      '3.3.9': 'AAA',
+    };
+    check(
+      '人工檢核：八條準則與等級都符合官方全文',
+      MC.MANUAL_CHECKS.length === 8 &&
+        MC.MANUAL_CHECKS.every((c) => official[c.guideline] === c.level),
+    );
+    check(
+      '人工檢核：與可自動檢測的對應表不重疊（2.5.8 由 target-size 負責）',
+      !MC.MANUAL_CHECKS.some((c) => rules.some((r) => r.twGuideline === c.guideline)) &&
+        rules.some((r) => r.twGuideline === '2.5.8' && r.axeRuleId === 'target-size'),
+    );
+    check(
+      '人工檢核：每筆欄位齊全、id 不重複、檢測碼格式正確',
+      new Set(MC.MANUAL_CHECKS.map((c) => c.id)).size === 8 &&
+        MC.MANUAL_CHECKS.every(
+          (c) =>
+            c.id === 'manual:' + c.guideline &&
+            c.guidelineName &&
+            c.category &&
+            c.title &&
+            c.appliesWhen &&
+            c.check &&
+            c.how &&
+            c.checkCodes.length > 0 &&
+            c.checkCodes.every((code) => /^[A-Z]{2}[123]\d{6}[A-Z]$/.test(code)),
+        ),
+    );
+    eq('人工檢核：目標 A 只列 2 條', MC.manualChecksForLevel('A').shown.length, 2);
+    eq('人工檢核：目標 A 未列 6 條', MC.manualChecksForLevel('A').hiddenCount, 6);
+    eq('人工檢核：目標 AA 列 5 條', MC.manualChecksForLevel('AA').shown.length, 5);
+    eq('人工檢核：目標 AAA 全列', MC.manualChecksForLevel('AAA').shown.length, 8);
+    check(
+      '人工檢核：無法辨識的等級全部列出（寧可多列）',
+      MC.manualChecksForLevel('亂填').shown.length === 8 &&
+        MC.manualChecksForLevel(undefined).hiddenCount === 0,
+    );
+    const counts = MC.summarizeManualChecks(MC.MANUAL_CHECKS, {
+      'manual:2.4.11': 'pass',
+      'manual:2.5.7': 'fail',
+      'manual:3.3.8': 'na',
+      'manual:3.3.9': '亂填',
+    });
+    check(
+      '人工檢核：統計自評，無法辨識的值算未確認',
+      counts.pass === 1 && counts.fail === 1 && counts.na === 1 && counts.none === 5,
+      JSON.stringify(counts),
+    );
+    eq(
+      '人工檢核：沒有自評資料時全部未確認',
+      MC.summarizeManualChecks(MC.MANUAL_CHECKS, undefined).none,
+      8,
+    );
+    eq('人工檢核：不適用的顯示文字', MC.manualResultLabel('na'), '不適用');
+    eq('人工檢核：未填的顯示文字', MC.manualResultLabel(undefined), '未確認');
+    eq('人工檢核：原型鍵不可被當成結果', MC.manualResultLabel('constructor'), '未確認');
+
+    const popupHtml = fs.readFileSync(path.join(REPO, 'popup/popup.html'), 'utf8');
+    check(
+      'popup.html：manual-checks.js 載於 popup.js 之前',
+      popupHtml.indexOf('shared/manual-checks.js') > 0 &&
+        popupHtml.indexOf('shared/manual-checks.js') < popupHtml.indexOf('src="popup.js"'),
+    );
+
+    const scanner = fs.readFileSync(path.join(REPO, 'content/scanner.js'), 'utf8');
+    check(
+      '規範切換：不再啟用已刪除準則的 duplicate-id',
+      !scanner.includes("'duplicate-id':") && scanner.includes("'target-size': { enabled: true }"),
+    );
+    check(
+      '規範切換：對應表已退役 4.1.1，且沒有過渡期附註',
+      !rules.some((r) => r.axeRuleId === 'duplicate-id' || r.twGuideline === '4.1.1') &&
+        !rules.some((r) => /110\.07|適用至/.test(r.noteZh || '')) &&
+        !rules.find((r) => r.axeRuleId === 'target-size').noteZh,
+    );
+    const popupJs = fs.readFileSync(path.join(REPO, 'popup/popup.js'), 'utf8');
+    const cliJs = fs.readFileSync(path.join(REPO, 'cli/ramp-scan.js'), 'utf8');
+    check(
+      '規範切換：報告不再把 110.07 寫成現行、也不再寫台灣尚未採用',
+      !popupJs.includes('現行 110.07') && !/尚未採用/.test(popupJs + cliJs),
+    );
+  }
+
   // 放最後：重新載入掃描器會換掉閉包，之後再用舊的 __rampA11yInternals 會對不上
   // 擴充更新後已開分頁殘留舊版掃描器：版本不同就必須重新定義（同版本才跳過）
   {
