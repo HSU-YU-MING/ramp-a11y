@@ -78,8 +78,9 @@ CLI（`cli/ramp-scan.js`）**當然會對使用者指定的目標網站送真實
 四個 view 靠 `hidden` 屬性切換。瀏覽器預設的 `[hidden]{display:none}` 會被 `.view-center`
 之類的 display 宣告蓋掉，結果是**四種狀態同時顯示**。這個 bug 在 `c7de72f` 修過一次。
 
-`popup.html` 底部三支 script 順序也不能反：`shared/report-core.js`、`shared/popup-logic.js`
-都必須在 `popup.js` 之前，`popup.js` 直接解構 `window.RampShared` 與 `window.RampPopupLogic`。
+`popup.html` 底部四支 script 順序也不能反：`shared/report-core.js`、`shared/popup-logic.js`、
+`shared/manual-checks.js` 都必須在 `popup.js` 之前，`popup.js` 直接解構 `window.RampShared`、
+`window.RampPopupLogic` 與 `window.RampManualChecks`。
 popup 的**純邏輯**（受保護網址判定、播報簽章、等級計數、自評存檔決策與 200 筆上限）放在
 `shared/popup-logic.js` 才測得到——`popup.js` 綁著 chrome.* 與 DOM，沒有單元測試。新增判斷式時
 往那邊放。
@@ -214,8 +215,10 @@ engines 抬到 Node 22.12、Chrome 沙箱改為預設保留、離開碼契約改
 - 退役 `data/rules-map.json` 裡的 `duplicate-id` 條目
 - 清掉 4.1.1 與 2.5.8 條目的過渡期附註（`noteZh`）
 - 兩份 README 的標準版本對照表改以 115 年修正版為現行版
+- 新增 `shared/manual-checks.js`：其餘八條新準則 axe 無法判定，列成人工檢核清單
 
-改動會連帶讓 `test:docs` 的規則總數守門紅燈，那是預期內的，一起改數字。
+上面這些已在 `feat/v2.1.0-rule-115` 分支完成，**還沒合併、也還沒發版**。商店審查通常要數日，
+要在 11-30 當天上線就得提前送審；`release:prep` 與推 tag 仍照發版步驟由人來按。
 
 ## 技術債留帳
 

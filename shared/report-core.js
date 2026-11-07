@@ -46,7 +46,7 @@
       axeId: rule.id,
       impact: rule.impact || null,
       isBestPractice: (rule.tags || []).includes('best-practice'),
-      // WCAG 2.2 新增準則：台灣規範（對齊 WCAG 2.1）尚未採用，需明確標示
+      // WCAG 2.2 新增準則：對應表沒收錄時明確標示，不要混進一般的「未對應」
       isWcag22: (rule.tags || []).some((t) => /^wcag22a{1,3}$/.test(t)),
     };
     if (map) {

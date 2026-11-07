@@ -106,6 +106,15 @@ const {
   reviewKeysToPrune,
 } = window.RampPopupLogic;
 
+// 115 年修正版新增、axe 無法自動判定的準則（載於 popup.js 之前的 shared/manual-checks.js，有單元測試）
+const {
+  MANUAL_CHECKS,
+  MANUAL_RESULT_ZH,
+  manualChecksForLevel,
+  summarizeManualChecks,
+  manualResultLabel,
+} = window.RampManualChecks;
+
 /** 存檔失敗時出聲（快取提示列）——靜默失效是本專案反覆出現的失敗模式 */
 function showStorageNote(msg) {
   cacheNoteEl.textContent = msg;
@@ -470,6 +479,42 @@ function classifyResults(result) {
   return { violations, bestPractice, incomplete };
 }
 
+/** 人工檢核項目的準則說明行（popup 與匯出報告共用） */
+function manualGuidelineText(item) {
+  return `台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}・檢測碼 ${item.checkCodes.map(escapeHtml).join('、')}`;
+}
+
+/** 產生單一人工檢核項目的 HTML（沒有受影響元素，所以不走 issueHtml） */
+function manualCheckHtml(item) {
+  const rv = reviewState[item.id] || '';
+  const options = [['', '未確認'], ...Object.entries(MANUAL_RESULT_ZH)]
+    .map(
+      ([value, label]) =>
+        `<option value="${value}"${rv === value ? ' selected' : ''}>${escapeHtml(label)}</option>`,
+    )
+    .join('');
+  return `
+    <div class="issue">
+      <button class="issue-header" type="button" aria-expanded="false">
+        <span class="badge badge-${escapeHtml(item.level)}">${escapeHtml(item.level)}</span>
+        <span class="issue-title">${escapeHtml(item.title)}</span>
+        <span class="issue-guideline">${escapeHtml(item.guideline)}</span>
+        <span class="chevron" aria-hidden="true">▶</span>
+      </button>
+      <div class="issue-body" hidden>
+        <p class="guideline">${manualGuidelineText(item)}</p>
+        <p><strong>什麼時候適用：</strong>${escapeHtml(item.appliesWhen)}</p>
+        <p><strong>怎麼檢查：</strong>${escapeHtml(item.check)}</p>
+        <p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>
+        <div class="review-box">
+          <label>人工檢核自評：
+            <select class="review-select" data-axe-id="${escapeHtml(item.id)}">${options}</select>
+          </label>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderResults(result, cachedTs) {
   setModeUI('issues'); // 結果一律以「檢測問題」模式呈現
   const { violations, bestPractice, incomplete } = classifyResults(result);
@@ -535,6 +580,18 @@ function renderResults(result, cachedTs) {
   if (showReview && incomplete.length > 0) {
     html += `<h2 class="group-heading">需人工複核（${incomplete.length} 項）</h2>`;
     html += incomplete.map((v) => issueHtml(v, 'badge-review', '複核', true)).join('');
+  }
+
+  // 115 年修正版新增、axe 無法判定的準則：每一頁都要自行確認，不計入統計（不灌水）
+  if (showReview) {
+    const { shown, hiddenCount } = manualChecksForLevel(prefs.targetLevel);
+    const hiddenNote =
+      hiddenCount > 0
+        ? `另有 ${hiddenCount} 條超出目標等級 ${escapeHtml(prefs.targetLevel)}，未列出（匯出報告會全部列出）。`
+        : '';
+    html += `<h2 class="group-heading">115 年修正版新增準則・需人工檢核（${shown.length} 項）</h2>`;
+    html += `<p class="issue-note manual-note">axe 無法自動判定這些準則，每一頁都要自行確認；未確認不代表通過，也不計入上方統計。${hiddenNote}</p>`;
+    html += shown.map(manualCheckHtml).join('');
   }
 
   issuesEl.innerHTML = html;
@@ -867,7 +924,7 @@ function reportIssueHtml(item, badgeText, isReview) {
     : '';
   const meta = item.mapped
     ? `台灣網站無障礙規範 ${escapeHtml(item.guideline)} ${escapeHtml(item.guidelineName)}（${escapeHtml(item.category)}）・等級 ${escapeHtml(item.level)}${impactText}${codesText}`
-    : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（台灣規範尚未採用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
+    : `${item.isBestPractice ? '最佳實務建議（非台灣規範必要項目）' : item.isWcag22 ? 'WCAG 2.2 新增準則（115 年修正版起適用）' : '未對應台灣規範準則'}・axe 規則：${escapeHtml(item.axeId)}${impactText}`;
 
   const nodes = item.nodes
     .map(
@@ -891,6 +948,19 @@ function reportIssueHtml(item, badgeText, isReview) {
     <p><strong>受影響元素（${item.nodeCount}）：</strong></p>
     <ul class="nodes">${nodes}</ul>
     ${more}
+  </section>`;
+}
+
+/** 匯出報告中的單一人工檢核項目 */
+function reportManualCheckHtml(item) {
+  return `
+  <section class="issue">
+    <h3><span class="badge">${escapeHtml(item.level)}</span>${escapeHtml(item.title)}</h3>
+    <p class="meta">${manualGuidelineText(item)}</p>
+    <p><strong>什麼時候適用：</strong>${escapeHtml(item.appliesWhen)}</p>
+    <p><strong>怎麼檢查：</strong>${escapeHtml(item.check)}</p>
+    <p><strong>如何修正：</strong>${escapeHtml(item.how)}</p>
+    <p><strong>人工檢核自評：</strong>${escapeHtml(manualResultLabel(reviewState[item.id]))}</p>
   </section>`;
 }
 
@@ -927,6 +997,12 @@ function buildReportHtml(scan) {
     body += '<p>未發現自動化可偵測的違規。自動化檢測僅涵蓋部分無障礙問題，仍需人工複核。</p>';
   }
 
+  // 新增準則人工檢核：報告一律列出全部，不受目標等級影響
+  body +=
+    `<h2>115 年修正版新增準則・需人工檢核（${MANUAL_CHECKS.length} 項）</h2>` +
+    '<p class="info">axe 無法自動判定這些準則，每一頁都要自行確認；未確認不代表通過，也不計入上方統計。</p>' +
+    MANUAL_CHECKS.map(reportManualCheckHtml).join('');
+
   // 人工複核自評摘要
   let reviewSummary = '';
   if (incomplete.length) {
@@ -936,6 +1012,9 @@ function buildReportHtml(scan) {
     });
     reviewSummary = `<p class="info">人工複核自評：通過 ${counts.pass} 項・不通過 ${counts.fail} 項・未確認 ${counts.none} 項（自評由檢測者自行填寫，僅供內部參考）</p>`;
   }
+
+  const manualCounts = summarizeManualChecks(MANUAL_CHECKS, reviewState);
+  const manualSummary = `<p class="info">新增準則人工檢核：通過 ${manualCounts.pass} 項・不通過 ${manualCounts.fail} 項・不適用 ${manualCounts.na} 項・未確認 ${manualCounts.none} 項</p>`;
 
   const version = chrome.runtime.getManifest().version;
   const time = new Date(scan.ts).toLocaleString('zh-TW');
@@ -976,13 +1055,14 @@ function buildReportHtml(scan) {
   <p class="info">檢測網址：${escapeHtml(scan.url)}<br>
   檢測時間：${escapeHtml(time)}<br>
   工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core ${escapeHtml(AXE_VERSION)}<br>
-  對應標準：台灣「網站無障礙規範」現行 110.07 版（對齊 WCAG 2.1）；115 年修正版（對齊 WCAG 2.2）自 115 年 11 月 30 日生效，版本差異條目已於內文附註</p>
+  對應標準：台灣「網站無障礙規範」115 年修正版（對齊 WCAG 2.2，自 115 年 11 月 30 日生效）</p>
 </header>
 <table class="stats">
   <tr><th>違規總數</th><th>等級 A</th><th>等級 AA</th><th>等級 AAA</th><th>未對應</th><th>最佳實務建議</th><th>需人工複核</th></tr>
   <tr><td>${violations.length}</td><td>${levelCounts.A}</td><td>${levelCounts.AA}</td><td>${levelCounts.AAA}</td><td>${unmappedCount}</td><td>${bestPractice.length}</td><td>${incomplete.length}</td></tr>
 </table>
 ${reviewSummary}
+${manualSummary}
 ${body}
 <div class="disclaimer">
   <strong>限制聲明：</strong>自動化檢測僅能涵蓋約三到四成的無障礙問題，本報告不等同官方無障礙標章認證，

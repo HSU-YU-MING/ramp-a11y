@@ -1224,9 +1224,6 @@
       // 這些元素參照只在頁面端使用，不會進入回傳給 popup 的序列化資料
       elementRef: true,
       rules: {
-        // axe 4.10 起 duplicate-id 因 WCAG 2.2 移除 4.1.1 而預設停用；
-        // 台灣規範 110.07 版（適用至 115.11.29）仍包含 4.1.1，故明確啟用
-        'duplicate-id': { enabled: true },
         // 115 年修正版新增 2.5.8 目標尺寸(最小)（WCAG 2.2），
         // axe 4.10 預設停用此規則，明確啟用使對應生效
         'target-size': { enabled: true },
