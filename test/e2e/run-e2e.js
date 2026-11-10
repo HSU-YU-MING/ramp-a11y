@@ -695,6 +695,103 @@ async function openPopup(browser, sw) {
       }
     });
 
+    await runStep('I 局部掃描', async () => {
+      // ===== T21：掃描範圍（CSS 選擇器）、範圍錯誤、改掃整頁、在頁面上點選 =====
+      await page.goto(`http://127.0.0.1:${PORT}/fixture.html`, { waitUntil: 'load' });
+      await page.bringToFront();
+      await closeStalePopups(browser);
+      const violationsOf = (p) =>
+        p.evaluate(() => {
+          const m = /違規總數\s*(\d+)/.exec(document.getElementById('stats').textContent);
+          return m ? Number(m[1]) : -1;
+        });
+      const scanWith = async (p, scope) => {
+        await p.evaluate((v) => {
+          document.getElementById('scope-input').value = v;
+        }, scope);
+        await p.click('#btn-scan');
+        await p.waitForFunction(
+          () =>
+            !document.getElementById('view-results').hidden ||
+            !document.getElementById('scope-error').hidden,
+          { timeout: 60000 },
+        );
+      };
+      let popupS = await openPopup(browser, sw);
+      try {
+        await scanWith(popupS, '#nope');
+        const err = await popupS.evaluate(() => ({
+          shown: !document.getElementById('scope-error').hidden,
+          text: document.getElementById('scope-error').textContent,
+          initial: !document.getElementById('view-initial').hidden,
+        }));
+        check(
+          'T21 範圍對不到 → 回初始畫面並說明（不退回掃整頁）',
+          err.shown && err.initial && err.text.includes('找不到'),
+          err.text,
+        );
+
+        await scanWith(popupS, 'section:nth-of-type(2)');
+        const scoped = await violationsOf(popupS);
+        const note = await popupS.evaluate(() => ({
+          shown: !document.getElementById('scope-note').hidden,
+          text: document.getElementById('scope-note').textContent,
+        }));
+        check(
+          'T21a 局部掃描只算範圍內（對比不足那一段 = 1 項）且標明範圍',
+          scoped === 1 && note.shown && note.text.includes('section:nth-of-type(2)'),
+          `violations=${scoped} note=${note.text}`,
+        );
+
+        await popupS.click('#btn-full-scan');
+        await popupS.waitForFunction(
+          () => document.getElementById('scope-note').textContent.includes('整個頁面'),
+          {
+            timeout: 60000,
+          },
+        );
+        await sleep(300);
+        const full = await violationsOf(popupS);
+        check(
+          'T21b 改掃整頁 → 範圍列寫「整個頁面」、違規數回到整頁',
+          full > scoped,
+          `full=${full}`,
+        );
+
+        // 在頁面上點選：popup 開始點選後自己關掉 → 點頁面元素 → 再開 popup 讀回選擇器
+        await popupS.click('#btn-change-scope'); // 結果畫面 → 回初始畫面
+        check(
+          'T21c 改範圍 → 回初始畫面、輸入框是目前的範圍（整頁＝空）',
+          await popupS.evaluate(
+            () =>
+              !document.getElementById('view-initial').hidden &&
+              document.getElementById('scope-input').value === '',
+          ),
+        );
+        await popupS.click('#btn-pick');
+        await sleep(500);
+      } finally {
+        await popupS.close().catch(() => {});
+      }
+      await page.bringToFront();
+      await page.click('p.low-contrast');
+      await sleep(300);
+      await closeStalePopups(browser);
+      popupS = await openPopup(browser, sw);
+      try {
+        const picked = await popupS.evaluate(() => document.getElementById('scope-input').value);
+        const same = picked
+          ? await page.evaluate(
+              (sel) => document.querySelector(sel) === document.querySelector('p.low-contrast'),
+              picked,
+            )
+          : false;
+        check('T21d 在頁面上點選 → 重開 popup 範圍已填好、選得回那個元素', same, picked);
+      } finally {
+        await popupS.close().catch(() => {});
+      }
+    });
+
     await runStep('G 受保護頁面', async () => {
       // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
       await page.goto('chrome://version/');

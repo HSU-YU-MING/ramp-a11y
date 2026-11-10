@@ -854,6 +854,66 @@ scanDone.then(async () => {
     );
   }
 
+  // ===== 局部掃描：掃描範圍與點選產生的選擇器 =====
+  {
+    const host = doc.createElement('div');
+    host.innerHTML =
+      '<section id="dlg"><p>彈窗</p><ul><li>a</li><li class="x">b</li></ul></section>' +
+      '<div class="card"><span>一</span></div><div class="card"><span>二</span></div>';
+    doc.body.appendChild(host);
+    eq('沒有範圍 → 掃整頁（info 為 null）', I.scopeContext({}).info, null);
+    check('空白範圍等於沒有範圍', I.scopeContext({ include: '   ' }).info === null);
+    const one = I.scopeContext({ include: '#dlg' });
+    check(
+      '有範圍 → axe context 的 include，計數對得上',
+      one.context.include[0] === '#dlg' && one.info.includeCount === 1,
+      JSON.stringify(one.info),
+    );
+    eq('一組元素都掃（兩張卡片）', I.scopeContext({ include: '.card' }).info.includeCount, 2);
+    const ex = I.scopeContext({ include: '#dlg', exclude: '.x' });
+    check('exclude 從範圍裡挖掉', ex.context.exclude[0] === '.x' && ex.info.excludeCount === 1);
+    eq(
+      '選擇器寫錯 → invalid-selector',
+      I.scopeContext({ include: 'div[' }).error,
+      'invalid-selector',
+    );
+    eq(
+      'exclude 寫錯也擋',
+      I.scopeContext({ include: '#dlg', exclude: ':::' }).error,
+      'invalid-selector',
+    );
+    eq(
+      '對不到任何元素 → no-match（不退回掃整頁）',
+      I.scopeContext({ include: '#nope' }).error,
+      'no-match',
+    );
+
+    // 點選：axe 不在（jsdom）時自己算，算出來的選擇器要剛好選回那個元素
+    const li = host.querySelector('li.x');
+    const sel = I.pickSelector(li);
+    check(
+      '沒有 axe 時退回 id 祖先＋nth-of-type',
+      sel === '#dlg > ul:nth-of-type(1) > li:nth-of-type(2)',
+      sel,
+    );
+    check('點選的選擇器選得回原元素', doc.querySelector(sel) === li);
+    const span2 = host.querySelectorAll('.card span')[1];
+    check(
+      '沒有 id 的祖先一路寫到 html',
+      doc.querySelector(I.pickSelector(span2)) === span2,
+      I.pickSelector(span2),
+    );
+    const odd = doc.createElement('b');
+    odd.id = 'a:b';
+    host.appendChild(odd);
+    check(
+      'id 有特殊字元要跳脫',
+      doc.querySelector(I.pickSelector(odd)) === odd,
+      I.pickSelector(odd),
+    );
+    host.remove();
+  }
+
   // ===== 內建對比檢查器 shared/contrast.js =====
   {
     const C = require(path.join(REPO, 'shared/contrast.js'));

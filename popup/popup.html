@@ -32,6 +32,14 @@
         </select>
         <span class="option-hint">（動畫或延遲載入較多的頁面適用）</span>
       </p>
+      <div class="scan-options scope-options">
+        <label for="scope-input">掃描範圍</label>
+        <input id="scope-input" type="text" spellcheck="false" autocomplete="off"
+               placeholder="整個頁面" aria-describedby="scope-hint scope-error" />
+        <button id="btn-pick" class="btn-link" type="button">在頁面上點選</button>
+        <span id="scope-hint" class="option-hint">（留空＝整頁；只掃彈窗或某個元件時填 CSS 選擇器，如 #dialog）</span>
+        <p id="scope-error" class="scope-error" role="alert" hidden></p>
+      </div>
     </section>
 
     <!-- 狀態二：載入中 -->
@@ -69,6 +77,8 @@
       </div>
       <!-- 快取還原提示（僅還原上次結果時顯示） -->
       <p id="cache-note" class="cache-note" hidden></p>
+      <!-- 掃描範圍（整頁或局部），附「改範圍」 -->
+      <p id="scope-note" class="scope-note" hidden></p>
       <!-- 朗讀順序模式的摘要列（僅朗讀順序模式顯示） -->
       <p id="reading-summary" class="reading-summary" hidden></p>
       <!-- 可捲動內容區（檢測問題清單／朗讀順序清單共用） -->

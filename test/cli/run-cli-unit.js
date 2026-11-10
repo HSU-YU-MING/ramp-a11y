@@ -392,6 +392,53 @@ fs.rmSync(tmp, { recursive: true, force: true });
     );
   }
 
+  // ===== 局部掃描（--scope／--scope-exclude）：報告頁首寫明範圍，標記不得注入 =====
+  {
+    const base = {
+      scannedAt: '2026-11-30T00:00:00.000Z',
+      finalUrl: 'https://example.test/',
+      version: '0.0.0',
+      targetLevel: 'AA',
+      summary: {
+        violations: 0,
+        affectedElements: 0,
+        byLevel: { A: 0, AA: 0, AAA: 0, unmapped: 0 },
+        bestPractice: 0,
+        needsManualReview: 0,
+      },
+      violations: [],
+    };
+    const whole = cli.buildPageHtml({ ...base, scope: null });
+    check('局部掃描：整頁掃描的報告沒有範圍列', !whole.includes('檢測範圍'));
+    const scoped = cli.buildPageHtml({
+      ...base,
+      scope: { include: '#main', includeCount: 1, exclude: '.ad', excludeCount: 2 },
+    });
+    check(
+      '局部掃描：報告頁首寫明只掃描與排除',
+      scoped.includes('檢測範圍：只掃描 #main、排除 .ad'),
+    );
+    const evil = cli.buildPageHtml({
+      ...base,
+      scope: { include: '<img src=x onerror=alert(1)>', includeCount: 1 },
+    });
+    check(
+      '局部掃描：選擇器以文字逸出，不注入報告',
+      !evil.includes('<img src=x') && evil.includes('&lt;img'),
+    );
+    const siteHtml = cli.buildSiteHtml({
+      scannedAt: '2026-11-30T00:00:00.000Z',
+      source: 'https://example.test/',
+      version: '0.0.0',
+      targetLevel: 'AA',
+      scope: { include: '.modal', exclude: null },
+      crawl: { mode: 'crawl', pagesFailed: 0, truncated: false },
+      siteSummary: cli.aggregate([]),
+      pages: [],
+    });
+    check('局部掃描：全站報告頁首也寫明範圍', siteHtml.includes('檢測範圍：只掃描 .modal'));
+  }
+
   const fails = results.filter((r) => !r.ok).length;
   console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
   process.exit(fails ? 1 : 0);
