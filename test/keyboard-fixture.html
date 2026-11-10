@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>鍵盤走訪測試頁</title>
+    <style>
+      body {
+        margin: 24px;
+        font: 16px/1.6 sans-serif;
+        color: #111;
+        background: #fff;
+      }
+      /* 跳到主要內容：聚焦時仍在畫面外 → 「聚焦時看不到」 */
+      .skip {
+        position: absolute;
+        left: -9999px;
+      }
+      /* 正確的寫法：聚焦時移進畫面 */
+      .skip-ok {
+        position: absolute;
+        left: -9999px;
+      }
+      .skip-ok:focus {
+        left: 8px;
+        top: 8px;
+      }
+      /* 拿掉焦點框、沒有替代樣式 → 「看不出焦點」 */
+      .nofocus:focus {
+        outline: none;
+      }
+      /* 拿掉 :focus 的框，但 :focus-visible 有替代樣式 → 沒問題 */
+      .fv:focus {
+        outline: none;
+      }
+      .fv:focus-visible {
+        box-shadow: 0 0 0 3px #1d4ed8;
+      }
+      /* 畫面上左右相反：DOM 先「第一個」，畫面上它在右邊 → 「左右順序跟畫面相反」 */
+      .row {
+        display: flex;
+        flex-direction: row-reverse;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到主要內容（看不到）</a>
+    <a class="skip-ok" href="#main">跳到主要內容</a>
+    <main id="main">
+      <h1>鍵盤走訪</h1>
+      <p><button type="button">一般按鈕</button></p>
+      <p><a href="#x" class="nofocus">拿掉焦點框的連結</a></p>
+      <p><button type="button" class="fv">focus-visible 按鈕</button></p>
+      <p><input tabindex="3" aria-label="正 tabindex 的輸入框" /></p>
+      <div class="row">
+        <button type="button">第一個</button>
+        <button type="button">第二個</button>
+      </div>
+      <div role="button">只能用滑鼠點的假按鈕</div>
+    </main>
+  </body>
+</html>

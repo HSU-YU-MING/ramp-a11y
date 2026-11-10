@@ -792,6 +792,86 @@ async function openPopup(browser, sw) {
       }
     });
 
+    await runStep('J 鍵盤 Tab 走訪', async () => {
+      // ===== T22：Tab 順序、正 tabindex、聚焦看不到、看不出焦點、左右相反、鍵盤到不了、頁面標號 =====
+      await page.goto(`http://127.0.0.1:${PORT}/keyboard-fixture.html`, { waitUntil: 'load' });
+      await page.bringToFront();
+      await closeStalePopups(browser);
+      const popupK = await openPopup(browser, sw);
+      try {
+        await popupK.click('#btn-scan');
+        await popupK.waitForSelector('#view-results:not([hidden])', { timeout: 60000 });
+        await popupK.click('.mode-tab[data-mode="keyboard"]');
+        await popupK.waitForSelector('.kb-item', { timeout: 30000 });
+        const kb = await popupK.evaluate(() =>
+          Array.from(document.querySelectorAll('.kb-item'), (b) => ({
+            name: b.querySelector('.ro-name') ? b.querySelector('.ro-name').textContent : '',
+            flags: Array.from(b.querySelectorAll('.ro-flag'), (x) => x.textContent),
+          })),
+        );
+        const names = kb.map((k) => k.name);
+        // 名稱完全相同的優先（「跳到主要內容」與「跳到主要內容（看不到）」）
+        const flagsOf = (n) =>
+          (
+            kb.find((k) => k.name === n) ||
+            kb.find((k) => k.name.includes(n)) || { flags: [] }
+          ).flags.join('|');
+        check(
+          'T22 Tab 順序：正 tabindex 先，其餘依 DOM（共 8 站）',
+          kb.length === 8 && names[0].includes('正 tabindex') && names[1].includes('看不到'),
+          names.join(' / '),
+        );
+        check(
+          'T22a 正 tabindex 標出來',
+          flagsOf('正 tabindex').includes('打亂順序'),
+          flagsOf('正 tabindex'),
+        );
+        check(
+          'T22b 聚焦仍在畫面外的跳到主要內容 → 聚焦時看不到；聚焦會移進畫面的不算',
+          flagsOf('看不到').includes('聚焦時看不到') && !flagsOf('跳到主要內容').includes('看不到'),
+          flagsOf('看不到') + ' ／ ' + flagsOf('跳到主要內容'),
+        );
+        check(
+          'T22c 拿掉焦點框的連結 → 看不出焦點；:focus-visible 有替代樣式的不算',
+          flagsOf('拿掉焦點框').includes('看不出焦點') && flagsOf('focus-visible') === '',
+          flagsOf('拿掉焦點框') + ' ／ ' + flagsOf('focus-visible'),
+        );
+        check(
+          'T22d 畫面上左右相反的兩顆按鈕 → 左右順序跟畫面相反',
+          flagsOf('第一個').includes('左右順序') && flagsOf('第二個').includes('左右順序'),
+          flagsOf('第一個'),
+        );
+        check('T22e 一般按鈕沒有問題', flagsOf('一般按鈕') === '', flagsOf('一般按鈕'));
+        const unreachable = await popupK.evaluate(() =>
+          Array.from(document.querySelectorAll('.issues .nodes li'), (li) => li.textContent),
+        );
+        check(
+          'T22f 只能用滑鼠點的 role=button → 鍵盤到不了',
+          unreachable.some((t) => t.includes('假按鈕') && t.includes('role="button"')),
+          JSON.stringify(unreachable),
+        );
+        const restored = await page.evaluate(() => document.activeElement === document.body);
+        check('T22g 走訪後焦點還原', restored);
+        await popupK.click('.kb-overlay');
+        await sleep(300);
+        const badges = await page.evaluate(() => {
+          const l = document.getElementById('ramp-a11y-kb-overlay');
+          return l ? l.querySelectorAll('div').length : -1;
+        });
+        check('T22h 在頁面上標號：每一站一個號碼', badges === 8, 'badges=' + badges);
+        await popupK.click('.kb-overlay');
+        await sleep(300);
+        check(
+          'T22i 再按一次拿掉標號',
+          await page.evaluate(() => !document.getElementById('ramp-a11y-kb-overlay')),
+        );
+        await popupK.evaluate(() => document.querySelector('.kb-item').scrollIntoView());
+        await popupK.screenshot({ path: OUT + '/popup-keyboard.png' });
+      } finally {
+        await popupK.close().catch(() => {});
+      }
+    });
+
     await runStep('G 受保護頁面', async () => {
       // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
       await page.goto('chrome://version/');

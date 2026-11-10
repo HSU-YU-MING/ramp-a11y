@@ -98,6 +98,7 @@
     }
     if (!el) return null;
     window.__rampA11yClear();
+    if (window.__rampA11yTabOverlay) window.__rampA11yTabOverlay(false);
     el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const rects = [];
@@ -1237,6 +1238,462 @@
     }
   };
 
+  // ===== 鍵盤 Tab 走訪 =====
+  // axe 的規則碰不到「按 Tab 實際會怎麼走」。這裡不按鍵（那要 debugger 權限，違反安全基準線）：
+  // 照瀏覽器的循序焦點規則排出 Tab 停點（正 tabindex 先、依值由小到大，再來是 tabindex 0／原生可聚焦
+  // 依 DOM 順序；同名單選鈕只有一站），再逐一程式化 focus() 檢查：聚焦後看不看得到、看不看得出焦點。
+  // 另外列出「看起來能操作、鍵盤卻到不了」的元素（有互動 role 或 onclick，但不可聚焦）。
+  // ⚠ focus() 會觸發頁面自己的 focus 事件（有的選單聚焦就展開），走完會把焦點還回去。
+
+  const KB_MAX = 500;
+  const KB_OVERLAY_ID = 'ramp-a11y-kb-overlay';
+  // 看起來是控制項的 role：有這些 role、卻不可聚焦（也不在 aria-activedescendant 管理的容器裡）＝鍵盤到不了
+  const KB_INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'checkbox',
+    'radio',
+    'switch',
+    'tab',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'slider',
+    'spinbutton',
+    'textbox',
+    'searchbox',
+    'combobox',
+    'option',
+    'treeitem',
+  ]);
+
+  function kbVisible(el) {
+    if (typeof el.checkVisibility === 'function') {
+      return el.checkVisibility({ checkVisibilityCSS: true, visibilityProperty: true });
+    }
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden';
+  }
+
+  /** 照瀏覽器的循序焦點規則排出 Tab 停點（只看主文件的 light DOM） */
+  function kbTabStops(root) {
+    const all = Array.from((root || document).querySelectorAll('*'));
+    const cand = [];
+    const radioSeen = new Map(); // 同一表單、同名的單選鈕群組只有一站
+    all.forEach((el, dom) => {
+      if (el.id === KB_OVERLAY_ID || el.closest('#' + KB_OVERLAY_ID)) return;
+      if (!(el.tabIndex >= 0)) return;
+      if (el.disabled) return;
+      if (el.closest('[inert]')) return;
+      if (!kbVisible(el)) return;
+      if (el.localName === 'input' && el.type === 'hidden') return;
+      if (el.localName === 'input' && el.type === 'radio' && el.name) {
+        const key = (el.form ? 'f' : 'd') + '|' + el.name;
+        const prev = radioSeen.get(key);
+        if (prev) {
+          // 群組裡有勾選的，那一顆才是停點
+          if (el.checked && !prev.el.checked) prev.el = el;
+          return;
+        }
+        const entry = { el, dom };
+        radioSeen.set(key, entry);
+        cand.push(entry);
+        return;
+      }
+      cand.push({ el, dom });
+    });
+    const items = cand.map((c) => ({ el: c.el, dom: c.dom, ti: c.el.tabIndex }));
+    items.sort((a, b) => {
+      const ap = a.ti > 0;
+      const bp = b.ti > 0;
+      if (ap && bp) return a.ti - b.ti || a.dom - b.dom;
+      if (ap !== bp) return ap ? -1 : 1;
+      return a.dom - b.dom;
+    });
+    return items;
+  }
+
+  // 焦點樣式比對的屬性：任何一個在聚焦前後不同，就看得出焦點
+  const KB_STYLE_PROPS = [
+    'outlineStyle',
+    'outlineWidth',
+    'outlineColor',
+    'boxShadow',
+    'borderTopColor',
+    'borderBottomColor',
+    'borderTopWidth',
+    'borderBottomWidth',
+    'backgroundColor',
+    'backgroundImage',
+    'color',
+    'textDecorationLine',
+  ];
+  function kbSnapshot(el) {
+    const s = getComputedStyle(el);
+    const o = {};
+    KB_STYLE_PROPS.forEach((p) => {
+      o[p] = s[p];
+    });
+    return o;
+  }
+  function kbHasOutline(snap) {
+    return snap.outlineStyle !== 'none' && parseFloat(snap.outlineWidth) > 0;
+  }
+
+  /**
+   * 作者樣式表裡跟這個元素有關的焦點規則（同源樣式表才讀得到）。
+   *
+   * ⚠ 不能靠 :focus 在執行期比對：popup 開著時頁面視窗沒有焦點，Chrome 的 :focus／:focus-visible
+   *   一律不成立（activeElement 會變、樣式不會套）——實測「聚焦會移進畫面的跳到主要內容」被誤報看不到、
+   *   「:focus{outline:none}」被放過。所以把選擇器裡的焦點偽類拿掉再 matches：
+   *   :focus／:focus-visible 比對元素本身，:focus-within 比對元素與祖先。
+   *   :not(:focus-visible) 的規則（只給滑鼠焦點用，鍵盤焦點不套）略過。
+   * @returns {{indicator, removed, revealed, unreadable}} revealed：聚焦時會移進畫面／顯示出來
+   */
+  function kbFocusRules(el) {
+    const out = { indicator: false, removed: false, revealed: false, unreadable: false };
+    const strip = (sel) =>
+      sel
+        .replace(/(^|[\s>+~,(]):focus(?:-visible|-within)?/g, '$1*')
+        .replace(/:focus(?:-visible|-within)?/g, '');
+    const visit = (rules) => {
+      for (const r of rules) {
+        if (r.cssRules && !r.selectorText) {
+          visit(r.cssRules); // @media、@supports、@layer
+          continue;
+        }
+        if (!r.selectorText || !r.style) continue;
+        const text = r.selectorText;
+        if (/:not\(\s*:focus-visible\s*\)/.test(text)) continue;
+        const focusRule = /:focus/.test(text);
+        let hit = false;
+        try {
+          const stripped = strip(text);
+          hit =
+            el.matches(stripped) ||
+            (/:focus-within/.test(text) &&
+              !!(el.parentElement && el.parentElement.closest(stripped)));
+        } catch (e) {
+          hit = false;
+        }
+        if (!hit) continue;
+        // getPropertyValue 用連字號名稱：比 camelCase 屬性穩（jsdom 的 cssstyle 沒有 boxShadow 這類屬性）
+        const g = (p) => (r.style.getPropertyValue(p) || '').trim();
+        const outline = g('outline');
+        const outlineStyle = g('outline-style');
+        const kills =
+          outlineStyle === 'none' ||
+          outline === 'none' ||
+          outline === '0' ||
+          /^0(px)?\b/.test(outline);
+        if (kills) out.removed = true;
+        if (!focusRule) continue;
+        const shadow = g('box-shadow');
+        const shows =
+          (!kills &&
+            (outline || (outlineStyle && outlineStyle !== 'none') || g('outline-color'))) ||
+          (shadow && shadow !== 'none') ||
+          [
+            'border-color',
+            'border-top-color',
+            'border-bottom-color',
+            'background-color',
+            'background',
+            'color',
+            'text-decoration',
+            'text-decoration-line',
+          ].some((p) => g(p));
+        if (shows) out.indicator = true;
+        if (
+          [
+            'left',
+            'top',
+            'right',
+            'bottom',
+            'transform',
+            'clip',
+            'clip-path',
+            'width',
+            'height',
+            'position',
+            'margin',
+            'opacity',
+            'visibility',
+          ].some((p) => g(p))
+        ) {
+          out.revealed = true;
+        }
+      }
+    };
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch (e) {
+        out.unreadable = true; // 跨來源樣式表讀不到
+        continue;
+      }
+      if (rules) visit(rules);
+    }
+    return out;
+  }
+
+  /**
+   * 一個停點：能不能聚焦、聚焦後看不看得到、看不看得出焦點。
+   * 回傳 { focusable, hidden, indicator: 'ok'|'none'|'unknown', how, rect }。
+   * 看得到與焦點樣式以樣式表為準（理由見 kbFocusRules）；頁面剛好有焦點、樣式真的變了也算看得出來。
+   */
+  function kbProbe(el) {
+    const before = kbSnapshot(el);
+    const r = el.getBoundingClientRect();
+    const docX = r.left + scrollX;
+    const docY = r.top + scrollY;
+    try {
+      el.focus({ preventScroll: true });
+    } catch (e) {
+      /* 擋 focus 的頁面腳本 */
+    }
+    if (document.activeElement !== el) return { focusable: false };
+    const after = kbSnapshot(el);
+    const rules = kbFocusRules(el);
+    const opaque =
+      typeof el.checkVisibility === 'function'
+        ? el.checkVisibility({ opacityProperty: true })
+        : true;
+    const offscreen =
+      r.width <= 1 || r.height <= 1 || docX + r.width <= 0 || docY + r.height <= 0 || !opaque;
+    const hidden = offscreen && !rules.revealed; // 有 :focus 規則把它移進畫面就不算
+    let indicator;
+    let how;
+    const changed = KB_STYLE_PROPS.filter((p) => before[p] !== after[p]);
+    if (rules.indicator) {
+      indicator = 'ok';
+      how = 'focus-rule';
+    } else if ((kbHasOutline(after) && !kbHasOutline(before)) || changed.length) {
+      indicator = 'ok'; // 頁面剛好有焦點時，樣式真的變了
+      how = kbHasOutline(after) ? 'outline' : changed[0];
+    } else if (rules.removed) {
+      indicator = 'none'; // 拿掉了瀏覽器的焦點框，又沒有替代樣式
+      how = 'outline-removed';
+    } else if (rules.unreadable) {
+      indicator = 'unknown'; // 有跨來源樣式表讀不到，不下結論
+      how = 'cross-origin-css';
+    } else {
+      indicator = 'ok'; // 沒有人拿掉：鍵盤聚焦時會有瀏覽器預設的焦點框
+      how = 'browser-default';
+    }
+    return {
+      focusable: true,
+      hidden,
+      indicator,
+      how,
+      rect: { x: docX, y: docY, w: r.width, h: r.height },
+    };
+  }
+
+  /** 看起來能操作、鍵盤卻到不了 */
+  function kbUnreachable(root) {
+    const out = [];
+    for (const el of Array.from((root || document).querySelectorAll('[role], [onclick]'))) {
+      if (out.length >= 100) break;
+      if (el.closest('#' + KB_OVERLAY_ID)) continue;
+      if (el.tabIndex >= 0 || el.hasAttribute('tabindex')) continue; // 可聚焦（-1 是刻意的程式化焦點）
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+      if (el.closest('[inert]') || !kbVisible(el)) continue;
+      const role = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
+      const byRole = KB_INTERACTIVE_ROLES.has(role);
+      if (!byRole && !el.hasAttribute('onclick')) continue;
+      // 由 aria-activedescendant 管理焦點的複合元件（listbox、tree、grid…）：子項本來就不可聚焦
+      if (el.closest('[aria-activedescendant]')) continue;
+      // 原生可聚焦的元素包在裡面（<div onclick><button>）：鍵盤到得了裡面那一個
+      if (el.querySelector('a[href], button, input, select, textarea, [tabindex]')) continue;
+      out.push({ el, reason: byRole ? 'role' : 'onclick', role: role || null });
+    }
+    return out;
+  }
+
+  window.__rampA11yTabOrder = function () {
+    document.querySelectorAll('[data-ramp-kb]').forEach((e) => e.removeAttribute('data-ramp-kb'));
+    window.__rampA11yTabOverlay(false);
+    const prevActive = document.activeElement;
+    const sx = scrollX;
+    const sy = scrollY;
+    let didSetup = false;
+    try {
+      if (window.axe && typeof window.axe.setup === 'function') {
+        window.axe.setup(document);
+        didSetup = true;
+      }
+    } catch (e) {
+      /* 名稱改用保底 */
+    }
+    const items = kbTabStops(document);
+    const stops = [];
+    try {
+      for (const it of items.slice(0, KB_MAX)) {
+        const i = stops.length;
+        it.el.setAttribute('data-ramp-kb', i);
+        const probe = kbProbe(it.el);
+        let nvda = null;
+        try {
+          nvda = nvdaPreview(it.el);
+        } catch (e) {
+          nvda = null;
+        }
+        stops.push({
+          kbIndex: i,
+          tag: it.el.localName,
+          tabindex: it.ti,
+          name:
+            nvda && nvda.name
+              ? nvda.name
+              : (it.el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+          role: nvda ? nvda.role : null,
+          focusable: probe.focusable,
+          hidden: !!probe.hidden,
+          indicator: probe.indicator || null,
+          how: probe.how || null,
+          rect: probe.rect || null,
+          positive: it.ti > 0,
+        });
+      }
+    } finally {
+      // 還原焦點與捲動位置
+      try {
+        if (prevActive && prevActive !== document.body && typeof prevActive.focus === 'function') {
+          prevActive.focus({ preventScroll: true });
+        } else if (document.activeElement && document.activeElement.blur) {
+          document.activeElement.blur();
+        }
+      } catch (e) {
+        /* 忽略 */
+      }
+      scrollTo(sx, sy);
+    }
+    // 同列反序：roComputeFlags 會在傳進去的物件上標 flagged，對回 stops
+    const flagHolders = stops.map((s) => ({
+      rect:
+        s.rect && s.focusable ? { top: s.rect.y, left: s.rect.x, w: s.rect.w, h: s.rect.h } : null,
+    }));
+    roComputeFlags(flagHolders);
+    stops.forEach((s, k) => {
+      s.orderFlag = !!flagHolders[k].flagged;
+    });
+    const unreachable = kbUnreachable(document).map((u) => {
+      let target = null;
+      try {
+        target = window.axe && window.axe.utils ? window.axe.utils.getSelector(u.el) : null;
+      } catch (e) {
+        target = null;
+      }
+      return {
+        target,
+        reason: u.reason,
+        role: u.role,
+        text: (u.el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+      };
+    });
+    if (didSetup) {
+      try {
+        window.axe.teardown();
+      } catch (e) {
+        /* 忽略 */
+      }
+    }
+    const count = (f) => stops.filter(f).length;
+    return {
+      url: location.href,
+      total: items.length,
+      truncated: items.length > KB_MAX,
+      counts: {
+        positive: count((s) => s.positive),
+        hidden: count((s) => s.focusable && s.hidden),
+        noIndicator: count((s) => s.indicator === 'none'),
+        unknownIndicator: count((s) => s.indicator === 'unknown'),
+        order: count((s) => s.orderFlag),
+        unreachable: unreachable.length,
+      },
+      stops: stops.map((s) => ({
+        kbIndex: s.kbIndex,
+        tag: s.tag,
+        tabindex: s.tabindex,
+        name: s.name,
+        role: s.role,
+        focusable: s.focusable,
+        hidden: s.hidden,
+        indicator: s.indicator,
+        how: s.how,
+        positive: s.positive,
+        orderFlag: s.orderFlag,
+      })),
+      unreachable,
+    };
+  };
+
+  /** 在頁面上標出 Tab 停點的號碼與走向（再呼叫一次 false 拿掉）。標號層 aria-hidden、不攔滑鼠 */
+  window.__rampA11yTabOverlay = function (on) {
+    const old = document.getElementById(KB_OVERLAY_ID);
+    if (old) old.remove();
+    if (!on) return true;
+    const els = Array.from(document.querySelectorAll('[data-ramp-kb]')).sort(
+      (a, b) => Number(a.getAttribute('data-ramp-kb')) - Number(b.getAttribute('data-ramp-kb')),
+    );
+    if (!els.length) return false;
+    const layer = document.createElement('div');
+    layer.id = KB_OVERLAY_ID;
+    layer.setAttribute('aria-hidden', 'true');
+    const docW = Math.max(document.documentElement.scrollWidth, innerWidth);
+    const docH = Math.max(document.documentElement.scrollHeight, innerHeight);
+    layer.style.cssText = `position:absolute;left:0;top:0;width:${docW}px;height:${docH}px;pointer-events:none;z-index:2147483646`;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', docW);
+    svg.setAttribute('height', docH);
+    svg.style.cssText = 'position:absolute;left:0;top:0;overflow:visible';
+    const pts = [];
+    els.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return;
+      const x = r.left + scrollX;
+      const y = r.top + scrollY;
+      pts.push(`${x + r.width / 2},${y + r.height / 2}`);
+      const badge = document.createElement('div');
+      badge.textContent = String(Number(el.getAttribute('data-ramp-kb')) + 1);
+      badge.style.cssText =
+        `position:absolute;left:${Math.max(0, x - 10)}px;top:${Math.max(0, y - 10)}px;min-width:20px;height:20px;` +
+        'padding:0 4px;border-radius:10px;background:#7C3AED;color:#fff;font:bold 12px/20px system-ui,sans-serif;' +
+        'text-align:center;box-shadow:0 0 0 2px #fff';
+      layer.appendChild(badge);
+    });
+    const line = document.createElementNS(NS, 'polyline');
+    line.setAttribute('points', pts.join(' '));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', '#7C3AED');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-dasharray', '6 4');
+    line.setAttribute('opacity', '0.7');
+    svg.appendChild(line);
+    layer.insertBefore(svg, layer.firstChild);
+    document.body.appendChild(layer);
+    return true;
+  };
+
+  /** 依 Tab 停點索引高亮頁面上的元素 */
+  window.__rampA11yHighlightKB = function (kbIndex) {
+    try {
+      window.__rampA11yClear();
+      ensureStyle();
+      const el = document.querySelector('[data-ramp-kb="' + kbIndex + '"]');
+      if (!el) return false;
+      el.classList.add(HIGHLIGHT_CLASS);
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
   // ===== 動態播報監看（即時區域 aria-live / role=alert 等）=====
   // NVDA 對「即時區域」的內容變動會自動播報：assertive／role=alert 立即打斷念出；
   // polite／role=status 等目前這句念完再念。以 MutationObserver 監看這些區域的變化，
@@ -1408,6 +1865,7 @@
     // 掃描前先清掉舊高亮，避免高亮樣式影響結果
     window.__rampA11yClear();
     window.__rampA11yPickStop();
+    if (window.__rampA11yTabOverlay) window.__rampA11yTabOverlay(false);
 
     // 局部掃描：include／exclude 是 CSS 選擇器（popup 的「掃描範圍」、CLI 的 --scope／--scope-exclude）。
     // 選擇器寫錯、或一個元素都對不到，回傳 { error } 讓呼叫端講清楚——不能退回掃整頁假裝成功
@@ -1509,6 +1967,9 @@
   // 內部純函式的測試掛勾（供 test/unit 存取；不影響正式行為，也不被 popup 使用）
   window.__rampA11yInternals = {
     scopeContext,
+    kbTabStops,
+    kbUnreachable,
+    kbFocusRules,
     pickSelector,
     nvdaValue,
     nvdaPosition,

@@ -44,6 +44,8 @@ let currentTabId = null; // 當前掃描的分頁 id
 let lastScan = null; // 最後一次掃描 { result, url, ts, fromCacheTs }，供報告匯出與重新渲染
 let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading（朗讀順序）| live（動態播報）
 let readingData = null; // 朗讀順序資料快取（每次重新檢測時失效）
+let keyboardData = null; // 鍵盤 Tab 走訪資料快取（每次重新檢測時失效；匯出報告會帶上）
+let kbOverlayOn = false; // 頁面上的 Tab 標號是否開著
 let scanGeneration = 0; // 每次重新檢測 +1：分析途中被重新檢測蓋過的舊結果不得寫回快取
 let liveTimer = null; // 動態播報輪詢計時器
 // 局部掃描的範圍（CSS 選擇器；空字串＝整頁）。「開始檢測」從輸入框讀，「重新檢測」沿用上次的
@@ -252,6 +254,8 @@ function renderScopeNote(scope) {
 async function runScan() {
   showView('loading');
   readingData = null; // 頁面即將重新檢測，舊的朗讀順序失效
+  keyboardData = null; // 鍵盤走訪跟著失效（掃描器會順手拿掉頁面上的標號）
+  kbOverlayOn = false;
   contrastMeasured = new Map(); // 舊的對比量測跟著失效
   scopeErrorEl.hidden = true;
   scanGeneration += 1;
@@ -728,6 +732,179 @@ function renderResults(result, cachedTs) {
   issuesEl.scrollTop = 0;
 }
 
+// ===== 鍵盤 Tab 走訪 =====
+
+const KB_FLAG = {
+  positive: (s) => `tabindex=${Number(s.tabindex)} 打亂順序（2.4.3）`,
+  hidden: () => '聚焦時看不到（2.4.7）',
+  none: () => '看不出焦點：outline 被拿掉、沒有替代樣式（2.4.7）',
+  unknown: () => '焦點樣式無法確認（跨網域樣式表）',
+  order: () => '左右順序跟畫面相反（2.4.3）',
+  unfocusable: () => '無法聚焦',
+};
+
+/** 一個停點的問題標籤（沒有問題回空陣列） */
+function kbFlags(s) {
+  const f = [];
+  if (!s.focusable) f.push(KB_FLAG.unfocusable(s));
+  if (s.positive) f.push(KB_FLAG.positive(s));
+  if (s.focusable && s.hidden) f.push(KB_FLAG.hidden(s));
+  if (s.indicator === 'none') f.push(KB_FLAG.none(s));
+  if (s.indicator === 'unknown') f.push(KB_FLAG.unknown(s));
+  if (s.orderFlag) f.push(KB_FLAG.order(s));
+  return f;
+}
+
+function kbProblemCount(data) {
+  const c = data.counts;
+  return c.positive + c.hidden + c.noIndicator + c.order + c.unreachable;
+}
+
+async function execTabOrder() {
+  if (currentTabId == null) return null;
+  await ensureInjected(currentTabId); // 停點名稱用 axe 算
+  const injection = await chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: () => window.__rampA11yTabOrder(),
+  });
+  return injection && injection[0] ? injection[0].result : null;
+}
+
+function kbItemHtml(s) {
+  const flags = kbFlags(s);
+  const role = s.role ? `<span class="ro-role">${escapeHtml(s.role)}</span>` : '';
+  const name = s.name
+    ? `<span class="ro-name">${escapeHtml(s.name)}</span>`
+    : '<span class="ro-noname">（無名稱）</span>';
+  const chips = flags.map((t) => `<span class="ro-flag">${escapeHtml(t)}</span>`).join('');
+  return `
+    <button class="ro-item kb-item${flags.length ? ' flagged' : ''}" type="button" data-kb="${Number(s.kbIndex)}"
+            title="點擊在頁面上高亮此停點">
+      <span class="ro-seq">${Number(s.kbIndex) + 1}</span>
+      ${role}
+      <span class="ro-body">${name}</span>
+      ${chips}
+    </button>`;
+}
+
+function renderKeyboardList(data) {
+  readingSummaryEl.hidden = false;
+  const n = kbProblemCount(data);
+  const problems = n ? `・<span class="ro-flag-count">${n} 個問題</span>` : '・沒有發現問題';
+  const trunc = data.truncated ? `・只檢查前 ${data.stops.length} 個` : '';
+  readingSummaryEl.innerHTML =
+    `按 Tab 會依此順序移動　共 <strong>${Number(data.total)}</strong> 個停點 ${problems} ${trunc}` +
+    ` <button class="btn-link kb-overlay" type="button" aria-pressed="${kbOverlayOn}">${kbOverlayOn ? '拿掉頁面上的標號' : '在頁面上標號'}</button>`;
+  let html = data.stops.length
+    ? data.stops.map(kbItemHtml).join('')
+    : '<p class="ro-empty">這一頁沒有可以用 Tab 走到的地方。</p>';
+  if (data.unreachable.length) {
+    html += `<h2 class="group-heading">看起來能操作、鍵盤卻到不了（${data.unreachable.length}）</h2>`;
+    html +=
+      '<p class="kb-note">有互動 role 或 onclick，但不可聚焦：只能用滑鼠操作（2.1.1）。補 <code>tabindex="0"</code> 與鍵盤事件，或改用原生元素。</p>';
+    html += '<ul class="nodes">';
+    html += data.unreachable
+      .map((u) => {
+        const what = u.reason === 'role' ? `role="${escapeHtml(u.role)}"` : 'onclick';
+        const label = escapeHtml(u.text || u.target || '（無文字）');
+        return u.target
+          ? `<li><button class="node-btn" type="button" data-selector="${escapeHtml(u.target)}">${label}</button> <span class="kb-why">${what}</span></li>`
+          : `<li>${label} <span class="kb-why">${what}</span></li>`;
+      })
+      .join('');
+    html += '</ul>';
+  }
+  html +=
+    '<p class="kb-note">順序照瀏覽器的 Tab 規則推算（沒有真的按鍵）；焦點樣式是逐一聚焦後比對樣式得出，只靠 <code>:focus-visible</code> 的樣式會讀樣式表確認。走訪會觸發頁面的 focus 事件，結束後焦點與捲動位置會還原。</p>';
+  issuesEl.innerHTML = html;
+  issuesEl.scrollTop = 0;
+}
+
+async function enterKeyboardMode() {
+  setModeUI('keyboard');
+  if (keyboardData) {
+    renderKeyboardList(keyboardData);
+    return;
+  }
+  readingSummaryEl.hidden = true;
+  issuesEl.innerHTML = '<p class="ro-loading">正在走訪 Tab 順序…</p>';
+  const gen = scanGeneration;
+  try {
+    const data = await execTabOrder();
+    if (gen !== scanGeneration) return;
+    if (data) keyboardData = data;
+    if (currentMode !== 'keyboard') return;
+    if (!data) {
+      issuesEl.innerHTML = '<p class="ro-empty">無法取得 Tab 順序，請按「重新檢測」後再試。</p>';
+      return;
+    }
+    renderKeyboardList(data);
+  } catch (err) {
+    if (currentMode === 'keyboard') {
+      issuesEl.innerHTML = '<p class="ro-empty">走訪 Tab 順序時發生錯誤。</p>';
+    }
+  }
+}
+
+async function toggleKbOverlay() {
+  const want = !kbOverlayOn;
+  try {
+    const r = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: (on) => (window.__rampA11yTabOverlay ? window.__rampA11yTabOverlay(on) : 'missing'),
+      args: [want],
+    });
+    if (r && r[0] && r[0].result === true) kbOverlayOn = want;
+  } catch {
+    /* 頁面已離開：維持原狀 */
+  }
+  if (keyboardData && currentMode === 'keyboard') renderKeyboardList(keyboardData);
+}
+
+async function highlightKBonPage(kbIndex) {
+  if (currentTabId == null) return false;
+  try {
+    const run = () =>
+      chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        func: (i) => (window.__rampA11yHighlightKB ? window.__rampA11yHighlightKB(i) : 'missing'),
+        args: [kbIndex],
+      });
+    let r = await run();
+    if (r && r[0] && r[0].result === 'missing') {
+      // 頁面重整過：重新走訪一次（重建 data-ramp-kb）後再試
+      keyboardData = await execTabOrder();
+      r = await run();
+    }
+    return !!(r && r[0] && r[0].result === true);
+  } catch {
+    return false;
+  }
+}
+
+/** 匯出報告的鍵盤走訪段落（沒走訪過就不放） */
+function reportKeyboardHtml(data) {
+  if (!data) return '';
+  const rows = data.stops
+    .filter((s) => kbFlags(s).length)
+    .map(
+      (s) =>
+        `<li>第 ${Number(s.kbIndex) + 1} 站 ${escapeHtml(s.role || s.tag)} 「${escapeHtml(s.name || '（無名稱）')}」：${kbFlags(s).map(escapeHtml).join('、')}</li>`,
+    )
+    .join('');
+  const unreachable = data.unreachable
+    .map(
+      (u) =>
+        `<li><code>${escapeHtml(u.target || '')}</code> ${escapeHtml(u.text || '')}（${u.reason === 'role' ? `role="${escapeHtml(u.role)}"` : 'onclick'}）</li>`,
+    )
+    .join('');
+  return `
+  <h2>鍵盤 Tab 走訪（${Number(data.total)} 個停點，${kbProblemCount(data)} 個問題）</h2>
+  ${rows ? `<ul class="nodes">${rows}</ul>` : '<p>Tab 停點沒有發現問題。</p>'}
+  ${unreachable ? `<h3>看起來能操作、鍵盤卻到不了（${data.unreachable.length}）</h3><ul class="nodes">${unreachable}</ul>` : ''}
+  <p class="more">順序照瀏覽器的 Tab 規則推算；焦點樣式是逐一聚焦後比對樣式得出。仍建議實際用鍵盤走一次。</p>`;
+}
+
 // ===== 高亮定位 =====
 
 /**
@@ -1150,6 +1327,9 @@ function buildReportHtml(scan) {
     '<p class="info">axe 無法自動判定這些準則，每一頁都要自行確認；未確認不代表通過，也不計入上方統計。</p>' +
     MANUAL_CHECKS.map(reportManualCheckHtml).join('');
 
+  // 鍵盤 Tab 走訪（這一頁走訪過才放）
+  body += reportKeyboardHtml(keyboardData && keyboardData.url === scan.url ? keyboardData : null);
+
   // 人工複核自評摘要
   let reviewSummary = '';
   if (incomplete.length) {
@@ -1324,6 +1504,8 @@ modeTabs.addEventListener('click', (e) => {
   const mode = tab.dataset.mode;
   if (mode === 'reading') {
     enterReadingMode();
+  } else if (mode === 'keyboard') {
+    enterKeyboardMode();
   } else if (mode === 'live') {
     enterLiveMode();
   } else {
@@ -1334,6 +1516,11 @@ modeTabs.addEventListener('click', (e) => {
 
 // 動態播報「清除」按鈕（摘要列為動態渲染，採事件代理）
 readingSummaryEl.addEventListener('click', (e) => {
+  // 鍵盤走訪：在頁面上標號／拿掉
+  if (e.target.closest('.kb-overlay') && currentTabId != null) {
+    toggleKbOverlay();
+    return;
+  }
   if (!e.target.closest('.live-clear') || currentTabId == null) return;
   chrome.scripting
     .executeScript({
@@ -1403,6 +1590,13 @@ issuesEl.addEventListener('change', async (e) => {
 
 // 展開／收合與元素高亮採事件代理，內容為動態渲染
 issuesEl.addEventListener('click', async (e) => {
+  // 鍵盤 Tab 停點 → 頁面高亮
+  const kbItem = e.target.closest('.kb-item');
+  if (kbItem) {
+    issuesEl.querySelectorAll('.kb-item.active').forEach((b) => b.classList.remove('active'));
+    if (await highlightKBonPage(Number(kbItem.dataset.kb))) kbItem.classList.add('active');
+    return;
+  }
   // 朗讀順序停點 → 頁面高亮（再次點擊清除）
   const roItem = e.target.closest('.ro-item');
   if (roItem) {
