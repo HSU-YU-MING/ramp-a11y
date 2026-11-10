@@ -489,6 +489,12 @@ fs.rmSync(tmp, { recursive: true, force: true });
       leak,
     );
     check('cookie：壞掉的 JSON 是錯誤', !!throwsMsg(() => A.parseCookieFile('[{"name":')));
+    const jsonLeak = throwsMsg(() => A.parseCookieFile('[TOPSECRET-value]'));
+    check(
+      'cookie：JSON 解析錯誤的訊息不引用輸入（不洩漏 cookie 值）',
+      !!jsonLeak && !jsonLeak.includes('TOPSECRET'),
+      jsonLeak,
+    );
     check('cookie：空檔是錯誤', !!throwsMsg(() => A.parseCookieFile('  ')));
     check(
       'cookie：cookies.txt 欄位不夠是錯誤（指出第幾行）',

@@ -29,7 +29,10 @@ function parseCookieFile(text) {
     try {
       data = JSON.parse(trimmed);
     } catch (e) {
-      throw new Error(`cookie 檔不是有效的 JSON（${e.message.replace(/ in JSON.*$/, '')}）`);
+      // 不帶 e.message：V8 的訊息常引用一段輸入（"…TOPSECRET…" is not valid JSON），會把 cookie 值印出來。
+      // 只取位置（「第幾行第幾欄」）
+      const m = /line (\d+) column (\d+)/.exec(String(e && e.message));
+      throw new Error(`cookie 檔不是有效的 JSON${m ? `（第 ${m[1]} 行第 ${m[2]} 欄附近）` : ''}`);
     }
     const list = Array.isArray(data)
       ? data
