@@ -166,7 +166,7 @@ npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExt
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
 npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：182 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
-npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：84 項
+npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：102 項
 npm run test:docs    # README 數字守門（測試項目數／檢測碼條數／axe 版本，比對真正的來源）
 npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：67 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
@@ -252,7 +252,11 @@ npm run scan -- --url-list url_inventory.csv --format html
 主要選項：`--depth`／`--max-pages`／`--concurrency`（並行加速，預設 1 循序）／`--delay`
 （禮貌間隔）／`--include`／`--exclude`（篩選爬到的連結與清單；爬掃模式的**起始頁一律會掃**）／
 `--url-list`／`--scope <css>`／`--scope-exclude <css>`（局部掃描：每一頁都只掃符合選擇器的範圍、挖掉排除的；
-某一頁對不到範圍就記為那一頁失敗，不會退回掃整頁）／`--level`（分「目標內／超出目標」）／`--fail-on violations`（掃出 **`--level` 目標內、
+某一頁對不到範圍就記為那一頁失敗，不會退回掃整頁）／**登入後掃描**（機關後台、會員頁）：`--cookies <file>`
+（DevTools／擴充功能匯出的 JSON，或 Netscape cookies.txt）、`--header "名稱: 值"`（可重複，如 `Authorization`；
+**只送給被掃網站自己的來源**，不跟著第三方資源出去）、`--user-data-dir <dir>`（沿用已登入的 Chrome 設定檔）、
+`--login`（先開看得見的 Chrome 讓你自己登入——驗證碼、自然人憑證都行——回終端機按 Enter 才開始掃）；
+用了任何一種，爬掃都會跳過看起來像登出的網址，報告只記用了哪種方式、**不記任何憑證**／`--level`（分「目標內／超出目標」）／`--fail-on violations`（掃出 **`--level` 目標內、
 已對應台灣準則**的違規即以離開碼 3 結束，供 CI 做門檻；超出目標等級、未對應台灣準則與最佳實務
 建議都不算）／`--out`／`--format json｜html｜both`／`--chrome`／`--no-sandbox`（預設保留
 Chrome 沙箱；容器等環境跑不起來時才開。環境變數 `CI` 為真值時自動附加，`CI=false`／`0` 不算）／

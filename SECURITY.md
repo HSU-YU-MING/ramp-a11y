@@ -49,6 +49,10 @@ review, which typically takes days and cannot be guaranteed.
   （Puppeteer `setBypassCSP`，僅影響檢測工作階段，不影響被測網站本身）。代價：原本會被
   該頁 CSP 擋下的頁面腳本，在檢測工作階段裡也會執行，掃到的 DOM 可能與一般使用者看到的
   略有不同。
+- CLI 的登入後掃描（`--cookies`／`--header`／`--user-data-dir`／`--login`）：憑證的值**不寫進報告、不印到
+  終端機**（報告只記用了哪幾種方式，錯誤訊息只說第幾筆、哪個欄位）；`--header` 只加在被掃網站自己來源的
+  請求上，不跟著第三方資源送出；cookie 綁網域由 Chrome 決定送給誰。爬掃會跳過看起來像登出的網址。
+  `--user-data-dir` 指定的設定檔裡的工作階段由使用者自行保管；`--login` 沒給設定檔時用暫存目錄、掃完刪除。
 - CLI 預設**保留 Chrome 沙箱**；`--no-sandbox` 需由使用者明示開啟
   （容器／root 等跑不起來的環境用；環境變數 CI 為真值時自動附加，CI=false／0 不算）。
 - 產出的 HTML 報告會包含目標頁面的字串片段（元素選擇器、文字內容）。這些
