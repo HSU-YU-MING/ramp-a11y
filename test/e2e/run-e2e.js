@@ -634,6 +634,67 @@ async function openPopup(browser, sw) {
       await popupX.close();
     });
 
+    await runStep('H 內建對比檢查器', async () => {
+      // ===== T20：axe 算不出背景（漸層）→ popup 截圖量測實際對比 =====
+      await page.goto(`http://127.0.0.1:${PORT}/contrast-fixture.html`, { waitUntil: 'load' });
+      await page.bringToFront();
+      await closeStalePopups(browser);
+      const popupC = await openPopup(browser, sw);
+      try {
+        await popupC.click('#btn-scan');
+        await popupC.waitForSelector('#view-results:not([hidden])', { timeout: 60000 });
+        await sleep(300);
+        await popupC.evaluate(() =>
+          document.querySelectorAll('.issue-header').forEach((h) => {
+            h.setAttribute('aria-expanded', 'true');
+            if (h.nextElementSibling) h.nextElementSibling.hidden = false;
+          }),
+        );
+        const axeLines = await popupC.evaluate(() =>
+          Array.from(document.querySelectorAll('.contrast-axe'), (e) => e.textContent),
+        );
+        check(
+          'T20 漸層背景：顯示 axe 算不出背景的原因',
+          axeLines.some((t) => t.includes('背景是漸層')),
+          JSON.stringify(axeLines),
+        );
+        const measure = async (sel) => {
+          // 不 bringToFront：popup 一失焦就關；被檢測的分頁本來就是視窗裡作用中的分頁（captureVisibleTab 截的就是它）
+          await popupC.evaluate((s) => {
+            document.querySelector(`.contrast-measure[data-selector="${s}"]`).click();
+          }, sel);
+          await popupC.waitForFunction(
+            (s) => {
+              const b = document.querySelector(`.contrast-measure[data-selector="${s}"]`);
+              const out = b && b.parentElement.querySelector('.contrast-result');
+              return out && /取樣|無法|失敗|看不懂|取不到/.test(out.textContent);
+            },
+            { timeout: 15000 },
+            sel,
+          );
+          return popupC.evaluate(
+            (s) =>
+              document
+                .querySelector(`.contrast-measure[data-selector="${s}"]`)
+                .parentElement.querySelector('.contrast-result')
+                .textContent.replace(/\s+/g, ' '),
+            sel,
+          );
+        };
+        const grad = await measure('#grad');
+        check('T20a 黑到白漸層上的白字：最差點不足 4.5:1', /低於 4\.50:1/.test(grad), grad);
+        await sleep(600); // captureVisibleTab 每秒最多兩次
+        const solid = await measure('#solid');
+        check('T20b 單色背景上的白字：取樣點全部達標', /全部達到 4\.50:1/.test(solid), solid);
+        await popupC.evaluate(() =>
+          document.querySelector('.contrast-result').scrollIntoView({ block: 'center' }),
+        );
+        await popupC.screenshot({ path: OUT + '/popup-contrast.png' });
+      } finally {
+        await popupC.close().catch(() => {});
+      }
+    });
+
     await runStep('G 受保護頁面', async () => {
       // ===== T8：受保護頁面 → 開啟即顯示無法檢測 =====
       await page.goto('chrome://version/');

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>內建對比檢查器測試頁</title>
+    <style>
+      body {
+        margin: 24px;
+        font: 16px/1.6 sans-serif;
+        color: #111;
+        background: #fff;
+      }
+      .tag {
+        padding: 4px 8px;
+        color: #fff;
+      }
+      /* 黑到白的漸層：axe 算不出背景（bgGradient，丟進需人工複核），右半邊白字幾乎看不見 */
+      #grad {
+        background: linear-gradient(90deg, #000, #fff);
+      }
+      /* 寫成漸層、其實是單色：axe 一樣算不出，實際對比遠超過 4.5:1 */
+      #solid {
+        background: linear-gradient(#123, #123);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>內建對比檢查器</h1>
+      <p><span id="grad" class="tag">白字在黑到白的漸層上，右半邊讀不到</span></p>
+      <p><span id="solid" class="tag">白字在深色背景上，寫成漸層但其實是單色</span></p>
+    </main>
+  </body>
+</html>

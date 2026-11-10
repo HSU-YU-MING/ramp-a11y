@@ -854,6 +854,75 @@ scanDone.then(async () => {
     );
   }
 
+  // ===== 內建對比檢查器 shared/contrast.js =====
+  {
+    const C = require(path.join(REPO, 'shared/contrast.js'));
+    const rgb = (h) => C.parseColor(h);
+    eq('parseColor #rgb', C.toHex(rgb('#f0a')), '#FF00AA');
+    eq('parseColor rgba() 的 alpha', rgb('rgba(10, 20, 30, 0.5)').a, 0.5);
+    eq('parseColor 新語法 rgb(1 2 3 / 40%)', rgb('rgb(1 2 3 / 40%)').a, 0.4);
+    eq('parseColor 看不懂 → null', C.parseColor('hsl(0 0% 0%)'), null);
+    // WCAG 標準值：黑白 21:1、#767676 對白 4.54:1
+    eq('黑對白 21:1', Math.round(C.contrast(rgb('#000'), rgb('#fff')) * 100) / 100, 21);
+    eq(
+      '#767676 對白 4.54:1',
+      Math.floor(C.contrast(rgb('#767676'), rgb('#fff')) * 100) / 100,
+      4.54,
+    );
+    eq('formatRatio 無條件捨去（4.499 不顯示成 4.50）', C.formatRatio(4.499), '4.49:1');
+    eq('一般文字 4.5', C.requiredRatio(16, '400'), 4.5);
+    eq('24px 大字 3', C.requiredRatio(24, '400'), 3);
+    eq('粗體 18.66px 大字 3', C.requiredRatio(18.67, '700'), 3);
+    eq('粗體 18px 仍是一般文字', C.requiredRatio(18, 'bold'), 4.5);
+    eq('字級算不出來 → 往嚴格那邊錯', C.requiredRatio(0, '400'), 4.5);
+
+    // 取樣點在行框外面一圈，不落在行框裡（反鋸齒的字形邊緣會把對比拉低成假的最差值）
+    const rects = [
+      { x: 10, y: 10, w: 20, h: 10 },
+      { x: 10, y: 21, w: 20, h: 10 }, // 下一行，離上一行只有 1px
+    ];
+    const pts = C.ringPoints(rects, 2, 200, 200);
+    const inRect = ([px, py]) =>
+      rects.some(
+        (r) => px / 2 >= r.x && px / 2 <= r.x + r.w && py / 2 >= r.y && py / 2 <= r.y + r.h,
+      );
+    check(
+      '取樣點不落在任何行框裡（含多行的上下一行）',
+      pts.length > 0 && !pts.some(inRect),
+      String(pts.length),
+    );
+    check(
+      '取樣點換算成截圖像素（scale 2）',
+      pts.every(([px, py]) => Number.isInteger(px) && Number.isInteger(py)),
+    );
+    check(
+      '超出截圖的點不取',
+      C.ringPoints([{ x: -20, y: -20, w: 4, h: 4 }], 1, 10, 10).length === 0,
+    );
+
+    // 漸層／圖片背景：回報最差點，不是平均
+    const fg = rgb('#ffffff');
+    const bgs = ['#000000', '#222222', '#888888', '#bbbbbb'].map(rgb);
+    const sum = C.summarize(fg, bgs, 4.5);
+    eq('最差點是最亮的背景', sum.worstBg, '#BBBBBB');
+    check('有點低於門檻 → 不通過並計數', !sum.pass && sum.belowCount === 2, JSON.stringify(sum));
+    eq(
+      '中位數取中間偏低那一點',
+      Math.round(sum.median * 100) / 100,
+      Math.round(C.contrast(fg, rgb('#888888')) * 100) / 100,
+    );
+    eq('跟字色幾乎一樣的點不算（旁邊同色字的字形）', C.summarize(fg, [rgb('#fefefe')], 4.5), null);
+    const half = C.summarize({ r: 0, g: 0, b: 0, a: 0.5 }, [rgb('#ffffff')], 4.5);
+    eq(
+      '半透明字色先疊在背景上再算',
+      Math.round(half.worst * 100) / 100,
+      Math.round(C.contrast(C.over({ r: 0, g: 0, b: 0, a: 0.5 }, rgb('#fff')), rgb('#fff')) * 100) /
+        100,
+    );
+    eq('原因翻譯：背景是圖片', C.reasonText('bgImage'), '背景是圖片');
+    check('不認得的原因照實寫出 key', C.reasonText('somethingNew').includes('somethingNew'));
+  }
+
   // 放最後：重新載入掃描器會換掉閉包，之後再用舊的 __rampA11yInternals 會對不上
   // 擴充更新後已開分頁殘留舊版掃描器：版本不同就必須重新定義（同版本才跳過）
   {
