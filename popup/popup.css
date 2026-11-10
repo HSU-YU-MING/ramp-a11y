@@ -824,6 +824,26 @@ body {
 .ro-states { color: var(--color-brand); font-weight: 600; }
 .ro-text { color: var(--color-text); }
 
+/* 鍵盤走訪：一個停點可能有好幾個問題，標籤要能換行 */
+.kb-item {
+  flex-wrap: wrap;
+}
+
+.kb-item .ro-flag {
+  white-space: normal;
+}
+
+.kb-note {
+  margin: 8px 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.kb-why {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .ro-flag {
   flex-shrink: 0;
   align-self: center;

@@ -35,6 +35,7 @@ Click the Ramp toolbar icon on any normal page → "開始檢測" (Start scan). 
 - **NVDA screen-reader preview**: under each finding, Ramp shows how [NVDA](https://www.nvda.org.tw/) (the most common free screen reader in Taiwan) would announce the element — **name + role + value + state + set position + item count + description + table coordinates**. Wording is verified against NVDA's official `zh_TW` localization and cross-checked against **real NVDA** driven by Guidepup (two modes: Tab traversal + line-by-line browse mode).
 - **Reading-order preview**: linearizes the whole page into NVDA's actual reading sequence (up to 500 stops per pass, truncation flagged), marks landmark/table/list enter-exit boundaries, and flags **order mismatches** (visual left-to-right order vs. reading order on the same row — WCAG 1.3.2).
 - **Live-region monitoring**: a `MutationObserver` watches `aria-live` / `role=alert` / `status` / `log` regions and lists what NVDA would auto-announce, with priority (`assertive` vs `polite`). Monitoring auto-stops ~3 minutes after the popup closes; the latest 100 captured announcements are kept.
+- **Keyboard walk**: the "鍵盤走訪" tab lists every stop Tab will visit, in the browser's sequential focus order (positive `tabindex` first, then DOM order; one stop per radio group; disabled, `inert` and invisible elements excluded), and flags **positive tabindex** (2.4.3), **invisible when focused** (e.g. a skip link that stays off-screen, 2.4.7), **no visible focus** (`outline` removed without a replacement, 2.4.7) and **left/right order reversed on screen** (2.4.3); elements that look operable (an interactive `role` or `onclick`) but can't be focused are listed separately (2.1.1). **Number the stops on the page** draws each stop's number and the path. No extra permission: it doesn't press keys (that needs `debugger`) — it calls `focus()` on each stop and reads the stylesheets, because Chrome doesn't apply `:focus` styles while the popup holds focus; cross-origin stylesheets make the focus check "can't confirm", never a failure.
 - **Honest self/manual split**: axe `incomplete` results are marked "needs manual review" — no misleading "fully compliant" verdict.
 - **Partial scan**: set a scan range (a CSS selector such as `#dialog` or `.modal`; every match is scanned) to audit just a dialog, a component or one part of the page — or press **Pick on page**, click the region, and reopen Ramp to find the range filled in (the selector comes from axe, written like the result targets). Results and the exported report always state what was scanned; an invalid or unmatched selector sends you back with an explanation instead of silently scanning the whole page.
 - **Built-in contrast checker**: every text-contrast finding shows axe's text colour, background and ratio, or why axe couldn't tell (background image, gradient, overlapping element). **Measure actual contrast** captures the visible tab (already allowed by `activeTab`; the image stays in the popup's memory), samples a ring of background pixels just outside each line of text, and reports the **worst** point, the median and how many points fall below the threshold (4.5:1, or 3:1 for large text). Measurements go into the exported report; the self-assessment still decides the verdict.
@@ -103,11 +104,11 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 182 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 192 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
 npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 103 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
-npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 67 checks
+npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 77 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
 npm run test:nvda:live  # Real-NVDA live-region (dynamic announcement) comparison
 ```

@@ -914,6 +914,92 @@ scanDone.then(async () => {
     host.remove();
   }
 
+  // ===== 鍵盤 Tab 走訪：停點順序、鍵盤到不了、焦點樣式規則 =====
+  {
+    const host = doc.createElement('div');
+    host.innerHTML =
+      '<a href="#a" id="k-a">一</a>' +
+      '<input id="k-pos2" tabindex="2">' +
+      '<button id="k-b">二</button>' +
+      '<input id="k-pos1" tabindex="1">' +
+      '<button id="k-dis" disabled>停用</button>' +
+      '<div inert><button id="k-inert">inert</button></div>' +
+      '<button id="k-none" style="display:none">隱藏</button>' +
+      '<span id="k-minus" tabindex="-1">程式化焦點</span>' +
+      '<form><input type="radio" name="r" id="k-r1"><input type="radio" name="r" id="k-r2" checked></form>' +
+      '<div role="button" id="k-fake">假按鈕</div>' +
+      '<div onclick="void 0" id="k-click">可點的 div</div>' +
+      '<div role="button" tabindex="0" id="k-real">真按鈕</div>' +
+      '<div onclick="void 0" id="k-wrap"><button>包著原生按鈕</button></div>' +
+      '<div role="listbox" aria-activedescendant="k-opt"><div role="option" id="k-opt">選項</div></div>';
+    doc.body.appendChild(host);
+    const ids = I.kbTabStops(host).map((x) => x.el.id || x.el.localName);
+    eq(
+      'Tab 順序：正 tabindex 先（由小到大），再依 DOM；停用、inert、隱藏、tabindex=-1 不算；同名單選鈕一站（勾選的那顆）',
+      ids.join(','),
+      'k-pos1,k-pos2,k-a,k-b,k-r2,k-real,button',
+    );
+    const un = I.kbUnreachable(host).map((u) => u.el.id + ':' + u.reason);
+    eq(
+      '鍵盤到不了：有互動 role 或 onclick 但不可聚焦（包著原生按鈕、activedescendant 管理的不算）',
+      un.join(','),
+      'k-fake:role,k-click:onclick',
+    );
+    host.remove();
+
+    // 焦點樣式：讀樣式表裡跟這個元素有關的 :focus／:focus-visible 規則
+    const style = doc.createElement('style');
+    style.textContent =
+      '.kill:focus { outline: none; }' +
+      '.fv:focus-visible { box-shadow: 0 0 0 3px #1D4ED8; }' +
+      '.zero { outline: 0; }' +
+      '@media screen { .media:focus { outline: none; } }' +
+      '.mouse:focus:not(:focus-visible) { outline: none; }' +
+      '.skip { position: absolute; left: -9999px; } .skip:focus { left: 8px; }' +
+      '.wrap:focus-within .inner { box-shadow: 0 0 0 2px #000; }';
+    doc.head.appendChild(style);
+    const mk = (cls) => {
+      const b = doc.createElement('button');
+      b.className = cls;
+      doc.body.appendChild(b);
+      b.focus();
+      const r = I.kbFocusRules(b);
+      b.remove();
+      return r;
+    };
+    const kill = mk('kill');
+    check(
+      '焦點樣式：:focus 拿掉 outline、沒有替代 → removed',
+      kill.removed && !kill.indicator,
+      JSON.stringify(kill),
+    );
+    const fv = mk('fv');
+    check(
+      '焦點樣式：:focus-visible 有 box-shadow → indicator',
+      fv.indicator && !fv.removed,
+      JSON.stringify(fv),
+    );
+    check('焦點樣式：不分狀態的 outline:0 也算拿掉', mk('zero').removed);
+    check('焦點樣式：@media 裡的規則也讀', mk('media').removed);
+    const plain = mk('plain');
+    check(
+      '焦點樣式：沒有人碰 → 兩者皆否（交給瀏覽器預設焦點框）',
+      !plain.removed && !plain.indicator,
+    );
+    // popup 開著時頁面沒有焦點、:focus 不成立：不靠執行期比對，拿掉焦點偽類再比
+    check('焦點樣式：只給滑鼠焦點的 :not(:focus-visible) 不算拿掉', !mk('mouse').removed);
+    check('焦點樣式：:focus 把元素移進畫面 → revealed（跳到主要內容）', mk('skip').revealed);
+    {
+      const w = doc.createElement('div');
+      w.className = 'wrap';
+      w.innerHTML = '<button class="inner">x</button>';
+      doc.body.appendChild(w);
+      check('焦點樣式：:focus-within 比對祖先', I.kbFocusRules(w.firstChild).indicator);
+      w.remove();
+    }
+    style.remove();
+  }
+
   // ===== 內建對比檢查器 shared/contrast.js =====
   {
     const C = require(path.join(REPO, 'shared/contrast.js'));
