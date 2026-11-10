@@ -481,6 +481,65 @@ body {
   word-break: break-all;
 }
 
+/* 內建對比檢查器（axe 的值、量測按鈕與結果） */
+.contrast-box {
+  margin: 4px 0 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow-wrap: break-word;
+}
+
+.contrast-box p {
+  margin: 2px 0;
+}
+
+.contrast-measure {
+  margin: 2px 0;
+  padding: 2px 10px;
+  font: inherit;
+  color: var(--color-btn-secondary); /* 深色模式是 teal-300；--color-brand 在深底上太暗 */
+  background: var(--color-card);
+  border: 1px solid var(--color-btn-secondary);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.contrast-measure:hover {
+  background: var(--color-hover-brand);
+}
+
+.contrast-measure:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.contrast-pass {
+  color: var(--color-success);
+}
+
+.contrast-fail,
+.contrast-error {
+  color: var(--color-danger);
+}
+
+.contrast-note {
+  color: var(--color-text-muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin: 0 3px -1px 0;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 2px;
+}
+
 /* 模擬 NVDA 報讀那一行（讓看得見的開發者「聽見」畫面） */
 .nvda-line {
   margin: 4px 0 2px;

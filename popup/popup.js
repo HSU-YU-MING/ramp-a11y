@@ -42,6 +42,8 @@ let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading�
 let readingData = null; // 朗讀順序資料快取（每次重新檢測時失效）
 let scanGeneration = 0; // 每次重新檢測 +1：分析途中被重新檢測蓋過的舊結果不得寫回快取
 let liveTimer = null; // 動態播報輪詢計時器
+// 內建對比檢查器的量測結果：selector → 結果（重新檢測時清空；匯出報告會帶上）
+let contrastMeasured = new Map();
 
 // 使用者偏好（chrome.storage.local 持久化）
 const prefs = {
@@ -55,6 +57,7 @@ let reviewState = {};
 let reviewKey = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const Contrast = window.RampContrast;
 
 // 等級顯示順序與標籤
 const LEVEL_ORDER = ['A', 'AA', 'AAA'];
@@ -224,6 +227,7 @@ async function ensureInjected(tabId) {
 async function runScan() {
   showView('loading');
   readingData = null; // 頁面即將重新檢測，舊的朗讀順序失效
+  contrastMeasured = new Map(); // 舊的對比量測跟著失效
   scanGeneration += 1;
   try {
     await loadRulesMap();
@@ -389,6 +393,93 @@ function nvdaLineHtml(nvda) {
  * 產生單一問題項目的 HTML
  * @param {boolean} isReview 是否為「需人工複核」項目（顯示自評選單）
  */
+// ===== 內建對比檢查器 =====
+
+/** axe 給的對比資料（字色、背景、比值，或算不出來的原因）＋「量測實際對比」按鈕 */
+function contrastLineHtml(n) {
+  const c = n.contrast;
+  if (!c) return '';
+  const known =
+    c.fg && c.bg && c.ratio
+      ? `axe：字色 ${escapeHtml(c.fg)}、背景 ${escapeHtml(c.bg)}，對比 ${escapeHtml(Contrast.formatRatio(c.ratio))}${c.expected ? `（需要 ${escapeHtml(c.expected)}）` : ''}`
+      : `axe 算不出背景色：${escapeHtml(Contrast.reasonText(c.reason) || '原因不明')}`;
+  const done = contrastMeasured.get(n.target);
+  return `
+          <div class="contrast-box">
+            <p class="contrast-axe">${known}</p>
+            <button class="contrast-measure" type="button" data-selector="${escapeHtml(n.target)}">量測實際對比</button>
+            <div class="contrast-result" aria-live="polite">${done ? contrastResultHtml(done) : ''}</div>
+          </div>`;
+}
+
+/** 量測結果給人看 */
+function contrastResultHtml(m) {
+  if (m.error) return `<p class="contrast-error">${escapeHtml(m.error)}</p>`;
+  const s = m.summary;
+  const verdict = s.pass
+    ? `<strong class="contrast-pass">取樣點全部達到 ${escapeHtml(Contrast.formatRatio(m.required))}</strong>`
+    : `<strong class="contrast-fail">${s.belowCount} / ${s.n} 個取樣點低於 ${escapeHtml(Contrast.formatRatio(m.required))}</strong>`;
+  return `
+    <p>${verdict}</p>
+    <p>字色 <span class="swatch" style="background:${escapeHtml(m.fg)}"></span>${escapeHtml(m.fg)}；背景取樣 ${s.n} 點：
+      最差 ${escapeHtml(Contrast.formatRatio(s.worst))}（<span class="swatch" style="background:${escapeHtml(s.worstBg)}"></span>${escapeHtml(s.worstBg)}）、
+      中位數 ${escapeHtml(Contrast.formatRatio(s.median))}、最好 ${escapeHtml(Contrast.formatRatio(s.best))}</p>
+    <p class="contrast-note">量的是此刻畫面上的顏色（文字外圍一圈）。動畫、輪播或滑鼠移過的狀態請自行切到要檢查的畫面再量；結果僅供複核參考。</p>`;
+}
+
+/**
+ * 量測一個元素的實際對比：頁面端把元素捲進視窗並回傳行框 → 截目前分頁可見範圍
+ * （activeTab 已允許，截圖只在記憶體裡用）→ 在行框外圍取樣背景 → 逐點算對比。
+ */
+async function measureContrast(selector) {
+  const prepIn = async () => {
+    const r = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: (sel) =>
+        window.__rampA11yContrastPrep ? window.__rampA11yContrastPrep(sel) : 'missing',
+      args: [selector],
+    });
+    return r && r[0] ? r[0].result : null;
+  };
+  let prep = await prepIn();
+  if (prep === 'missing') {
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      files: ['content/scanner.js'],
+    });
+    prep = await prepIn();
+  }
+  if (!prep || prep === 'missing')
+    return { error: '無法在頁面上找到此元素（可能位於 iframe 或已變更，請重新檢測）' };
+  if (!prep.rects.length)
+    return { error: '這個元素目前沒有看得見的文字可以量（可能被隱藏或在捲動容器外）' };
+  const fg = Contrast.parseColor(prep.color);
+  if (!fg) return { error: `看不懂這段文字的顏色（${prep.color}）` };
+
+  const tab = await chrome.tabs.get(currentTabId);
+  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, w, h).data;
+  const pts = Contrast.ringPoints(prep.rects, w / prep.viewportW, w, h);
+  const samples = pts.map(([x, y]) => {
+    const i = (y * w + x) * 4;
+    return { r: px[i], g: px[i + 1], b: px[i + 2] };
+  });
+  const required = Contrast.requiredRatio(prep.fontSize, prep.fontWeight);
+  const summary = Contrast.summarize(fg, samples, required);
+  if (!summary) return { error: '取不到可用的背景樣本（文字周圍都是同色字）' };
+  return { fg: Contrast.toHex(fg), required, summary };
+}
+
 function issueHtml(item, badgeClass, badgeText, isReview) {
   const nodesHtml = item.nodes
     .map(
@@ -399,6 +490,7 @@ function issueHtml(item, badgeClass, badgeText, isReview) {
             ${escapeHtml(n.target)}
           </button>
           ${nvdaLineHtml(n.nvda)}
+          ${contrastLineHtml(n)}
           ${n.html ? `<code class="node-html">${escapeHtml(n.html.slice(0, 120))}${n.html.length > 120 ? '…' : ''}</code>` : ''}
         </li>`,
     )
@@ -929,7 +1021,7 @@ function reportIssueHtml(item, badgeText, isReview) {
   const nodes = item.nodes
     .map(
       (n) =>
-        `<li><code>${escapeHtml(n.target)}</code>${reportNvdaHtml(n.nvda)}${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`,
+        `<li><code>${escapeHtml(n.target)}</code>${reportNvdaHtml(n.nvda)}${reportContrastHtml(n)}${n.html ? `<pre>${escapeHtml(n.html)}</pre>` : ''}</li>`,
     )
     .join('');
   const more =
@@ -949,6 +1041,22 @@ function reportIssueHtml(item, badgeText, isReview) {
     <ul class="nodes">${nodes}</ul>
     ${more}
   </section>`;
+}
+
+/** 匯出報告中的對比資料：axe 的值，與 popup 裡量過的實際對比 */
+function reportContrastHtml(n) {
+  const c = n.contrast;
+  if (!c) return '';
+  const axe =
+    c.fg && c.bg && c.ratio
+      ? `axe：字色 ${escapeHtml(c.fg)}、背景 ${escapeHtml(c.bg)}，對比 ${escapeHtml(Contrast.formatRatio(c.ratio))}`
+      : `axe 算不出背景色：${escapeHtml(Contrast.reasonText(c.reason) || '原因不明')}`;
+  const m = contrastMeasured.get(n.target);
+  const measured =
+    m && m.summary
+      ? `<br>實際量測（畫面取樣 ${m.summary.n} 點）：最差 ${escapeHtml(Contrast.formatRatio(m.summary.worst))}、中位數 ${escapeHtml(Contrast.formatRatio(m.summary.median))}，門檻 ${escapeHtml(Contrast.formatRatio(m.required))}，${m.summary.pass ? '全部達標' : `${m.summary.belowCount} 點不足`}`
+      : '';
+  return `<p class="more">${axe}${measured}</p>`;
 }
 
 /** 匯出報告中的單一人工檢核項目 */
@@ -1234,6 +1342,25 @@ issuesEl.addEventListener('click', async (e) => {
     const expanded = header.getAttribute('aria-expanded') === 'true';
     header.setAttribute('aria-expanded', String(!expanded));
     header.nextElementSibling.hidden = expanded;
+    return;
+  }
+
+  // 內建對比檢查器：量測實際對比
+  const measureBtn = e.target.closest('.contrast-measure');
+  if (measureBtn) {
+    if (currentTabId == null) return;
+    const out = measureBtn.parentElement.querySelector('.contrast-result');
+    measureBtn.disabled = true;
+    out.innerHTML = '<p>量測中…</p>';
+    let m;
+    try {
+      m = await measureContrast(measureBtn.dataset.selector);
+    } catch (err) {
+      m = { error: `量測失敗：${err && err.message ? err.message : err}` };
+    }
+    contrastMeasured.set(measureBtn.dataset.selector, m);
+    out.innerHTML = contrastResultHtml(m);
+    measureBtn.disabled = false;
     return;
   }
 

@@ -36,6 +36,7 @@ Click the Ramp toolbar icon on any normal page → "開始檢測" (Start scan). 
 - **Reading-order preview**: linearizes the whole page into NVDA's actual reading sequence (up to 500 stops per pass, truncation flagged), marks landmark/table/list enter-exit boundaries, and flags **order mismatches** (visual left-to-right order vs. reading order on the same row — WCAG 1.3.2).
 - **Live-region monitoring**: a `MutationObserver` watches `aria-live` / `role=alert` / `status` / `log` regions and lists what NVDA would auto-announce, with priority (`assertive` vs `polite`). Monitoring auto-stops ~3 minutes after the popup closes; the latest 100 captured announcements are kept.
 - **Honest self/manual split**: axe `incomplete` results are marked "needs manual review" — no misleading "fully compliant" verdict.
+- **Built-in contrast checker**: every text-contrast finding shows axe's text colour, background and ratio, or why axe couldn't tell (background image, gradient, overlapping element). **Measure actual contrast** captures the visible tab (already allowed by `activeTab`; the image stays in the popup's memory), samples a ring of background pixels just outside each line of text, and reports the **worst** point, the median and how many points fall below the threshold (4.5:1, or 3:1 for large text). Measurements go into the exported report; the self-assessment still decides the verdict.
 - **Manual checklist for new criteria**: the 8 criteria added by the 115 amendment that axe cannot judge are listed with when they apply, how to check them, and official check codes. Unconfirmed never counts as passed, and the CLI report lists them without affecting the exit code.
 - **Manual-review self-assessment**: mark review items pass/fail, persisted per URL and included in the exported report.
 - **Report export**: one-click self-contained HTML report (open to read, print to PDF; up to 20 affected elements listed per rule, with the total noted).
@@ -82,7 +83,7 @@ It emits structured **JSON** and a self-contained **HTML** report styled like th
 
 Ramp does **not** request persistent all-sites access. It uses only:
 
-- `activeTab` — temporary access to the current tab, granted only when you click the icon.
+- `activeTab` — temporary access to the current tab, granted only when you click the icon (the contrast checker's screenshot uses it too; no extra permission).
 - `scripting` — to inject axe-core and the scanner.
 - `storage` — session cache of scan results (cleared when the browser closes), plus local storage for preferences and per-URL manual-review self-assessments (persistent, keeping the 200 most recent URLs; removed together with the extension).
 
@@ -101,11 +102,11 @@ Everything stays in your browser — all analysis runs locally and no data is se
 npm install
 npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
-npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 148 checks
+npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 170 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
 npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 80 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
-npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 59 checks
+npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 62 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)
 npm run test:nvda:live  # Real-NVDA live-region (dynamic announcement) comparison
 ```

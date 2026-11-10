@@ -77,6 +77,46 @@
     }
   };
 
+  /**
+   * 內建對比檢查器的量測準備（popup 接著呼叫 captureVisibleTab 截圖）：把元素捲進視窗、清掉高亮
+   * （高亮的外框會被截進去），等兩個畫格讓畫面穩定，回傳這個元素每一行文字的行框（CSS px，相對視窗）
+   * 與字色。行框取自元素底下所有看得見的文字節點（Range.getClientRects），只留跟視窗有交集的。
+   * @returns {Promise<null | {rects, viewportW, viewportH, color, fontSize, fontWeight}>}
+   */
+  window.__rampA11yContrastPrep = async function (selector) {
+    let el;
+    try {
+      el = document.querySelector(selector);
+    } catch (e) {
+      return null;
+    }
+    if (!el) return null;
+    window.__rampA11yClear();
+    el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const rects = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.nodeValue || !n.nodeValue.trim()) continue;
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        if (r.width < 1 || r.height < 1) continue;
+        if (r.right <= 0 || r.bottom <= 0 || r.left >= innerWidth || r.top >= innerHeight) continue;
+        rects.push({ x: r.left, y: r.top, w: r.width, h: r.height });
+      }
+    }
+    const cs = getComputedStyle(el);
+    return {
+      rects,
+      viewportW: innerWidth,
+      viewportH: innerHeight,
+      color: cs.color,
+      fontSize: parseFloat(cs.fontSize) || 0,
+      fontWeight: cs.fontWeight,
+    };
+  };
+
   // ===== NVDA 報讀預覽 =====
   // 讓看得見的開發者「看見」NVDA（盲用視窗資訊系統）會怎麼念出這個元素。
   // 角色與狀態的中文用詞取自 NVDA 官方正體中文翻譯（zh_TW），逐條核對自：
@@ -1230,6 +1270,22 @@
       },
     });
 
+    /** axe 的 color-contrast 檢查資料 → 可序列化的精簡版；其他規則回 null */
+    const contrastData = (ruleId, node) => {
+      if (ruleId !== 'color-contrast' && ruleId !== 'color-contrast-enhanced') return null;
+      const checks = [].concat(node.any || [], node.all || [], node.none || []);
+      const c = checks.find((x) => x && x.data && (x.data.fgColor || x.data.messageKey));
+      if (!c) return null;
+      const d = c.data;
+      return {
+        fg: d.fgColor || null,
+        bg: d.bgColor || null,
+        ratio: typeof d.contrastRatio === 'number' && d.contrastRatio > 0 ? d.contrastRatio : null,
+        expected: d.expectedContrastRatio || null,
+        reason: d.messageKey || null,
+      };
+    };
+
     // 每條規則最多回傳的元素數：大型頁面單一規則可能有上千個元素，
     // 全數回傳會拖垮 popup 渲染與 session 快取
     const MAX_NODES = 20;
@@ -1253,6 +1309,8 @@
           html: (node.html || '').slice(0, 300),
           // 模擬 NVDA 報讀（可序列化的 { name, role, roleEn, states }；算不出時為 null）
           nvda: nvdaPreview(node.element),
+          // color-contrast 才有：axe 算出的字色、背景、比值，算不出時的原因（內建對比檢查器用）
+          contrast: contrastData(rule.id, node),
         })),
       }));
 

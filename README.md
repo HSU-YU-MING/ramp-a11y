@@ -34,6 +34,7 @@
 - **朗讀順序預覽**：切換到「朗讀順序」分頁，把整頁**線性化**成 NVDA 實際念出的先後順序（依 DOM 順序，行內連結會插在文字中間；**地標與表格會標出「進入／離開」邊界**，如「導覽區 地標」「表格有 N 列 M 欄」「清單 有 N 項」「離開表格」），並標出「**順序落差**」——同一視覺列上畫面由左到右的順序與朗讀先後相反（flex `order`、`float:right`、RTL 等造成的 WCAG 1.3.2 有意義順序問題）。點任一停點即在原頁面高亮定位（單次最多列出 500 個停點，超過會標示截斷）
 - **動態播報（即時區域）**：切換到「動態播報」分頁後，以 `MutationObserver` 監看頁面的**即時區域**（`aria-live`、`role=alert`／`status`／`log`…）。在頁面上觸發動態變化（表單錯誤、儲存提示、即時搜尋…）時，NVDA 會自動播報的內容會依時間軸列出，並標示播報優先度（`assertive` **立即打斷**／`polite` **依序播報**）。監看在頁面端累積，popup 因失焦關閉後重開仍看得到期間捕捉的播報（為避免長期占用頁面資源，popup 關閉約 **3 分鐘**後自動停止監看；保留最近 100 則）——這是唯一無法用靜態快照呈現、必須「動態模擬」的部分
 - axe 判定為 incomplete 的項目標示為「**需人工複核**」
+- **內建對比檢查器**：文字對比的每個受影響元素都列出 axe 算出的字色、背景與比值；背景是圖片、漸層、被別的元素蓋住而算不出來時，寫明原因，並可按「**量測實際對比**」——截目前分頁的可見畫面（`activeTab` 本來就允許，截圖只在 popup 記憶體裡用、不存也不外傳），在每一行文字外圍取一圈背景像素，逐點跟字色算對比，回報**最差點**、中位數與低於門檻的點數（門檻依字級：一般 4.5:1、大字 3:1）。取外圍一圈是為了避開字形邊緣的反鋸齒混色，回報最差而不是平均，是因為背景是照片或漸層時，字最難讀的那一段才是障礙所在。量測結果會帶進匯出報告。量的是當下畫面，動畫、輪播與滑鼠移過的狀態要自行切到再量；結論仍由人工複核自評決定
 - 內建 axe 官方 **zh_TW 語言包**：未在對應表中的規則也以繁中顯示，僅標示「未對應台灣規範準則」
 - axe 的**最佳實務建議**（非 WCAG 失敗項）獨立分組，不灌水「違規」數字
 - **結果快取**：popup 關閉重開時，同一分頁、同一網址的上次結果會自動還原，不必重掃
@@ -53,7 +54,7 @@
 
 本擴充套件**不要求「所有網站」的常駐權限**，只使用：
 
-- `activeTab`：使用者主動點擊圖示時，才臨時取得當前分頁的存取權
+- `activeTab`：使用者主動點擊圖示時，才臨時取得當前分頁的存取權（內建對比檢查器的截圖也靠它，不需要額外權限）
 - `scripting`：注入 axe-core 與掃描腳本
 - `storage`：session storage 快取掃描結果（關閉瀏覽器即清除）；local storage 保存偏好設定與人工複核自評（自評以檢測過的網址為鍵、持久保存，最多保留最近 200 個網址；移除擴充功能即一併清除）
 
@@ -127,6 +128,7 @@ ramp-a11y/
 │   └── axe-locale-zh_TW.js  # axe 官方 zh_TW 語言包（包裝為可注入的 JS）
 ├── test/
 │   ├── fixture.html         # 故意違規的測試素材頁
+│   ├── contrast-fixture.html  # 內建對比檢查器的測試頁（漸層背景）
 │   ├── unit/                # 純函式單元測試（jsdom）
 │   ├── self-audit/          # popup 靜態無障礙契約測試
 │   ├── e2e/                 # 端對端迴歸測試（Puppeteer）
@@ -161,11 +163,11 @@ curl -sL -o /tmp/zh_TW.json https://cdn.jsdelivr.net/npm/axe-core@4.10.3/locales
 npm install
 npm run lint         # ESLint 靜態檢查（flat config，含瀏覽器／WebExtensions 全域）
 npm run format:check # Prettier 格式檢查（npm run format 可自動修正）
-npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：148 項
+npm run test:unit    # 純函式單元測試（jsdom，含共用模組與 rules-map 資料完整性，不需 Chrome）：170 項
 npm run test:self    # popup 靜態無障礙契約測試（jsdom 解析 popup.html）：13 項
 npm run test:cli     # 全站爬掃 CLI 純函式測試（URL 正規化／清單解析／彙整／目標分組）：80 項
 npm run test:docs    # README 數字守門（測試項目數／檢測碼條數／axe 版本，比對真正的來源）
-npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：59 項
+npm test             # 端對端；需本機安裝 Chrome，可用 CHROME_PATH 指定位置：62 項
 npm run test:nvda    # 真實 NVDA 對照（需互動桌面，NVDA 會出聲；見 test/nvda/README.md）
 npm run test:nvda:live  # 真實 NVDA 的動態播報（即時區域）對照
 ```
