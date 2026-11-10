@@ -31,6 +31,7 @@
   window.__rampA11yVer = VER;
 
   const HIGHLIGHT_CLASS = 'ramp-a11y-highlight';
+  const PICK_CLASS = 'ramp-a11y-pick'; // 點選掃描範圍時的虛線外框
   const STYLE_ID = 'ramp-a11y-style';
 
   /** 確保高亮樣式已插入頁面 */
@@ -44,6 +45,11 @@
         outline-offset: 2px !important;
         box-shadow: 0 0 0 6px rgba(225, 29, 72, 0.25) !important;
         transition: outline 0.15s ease !important;
+      }
+      .${PICK_CLASS} {
+        outline: 3px dashed #0F766E !important;
+        outline-offset: 2px !important;
+        cursor: crosshair !important;
       }
     `;
     document.documentElement.appendChild(style);
@@ -115,6 +121,152 @@
       fontSize: parseFloat(cs.fontSize) || 0,
       fontWeight: cs.fontWeight,
     };
+  };
+
+  /**
+   * 局部掃描的 axe context。include 對到的每一個元素都掃（可以是一組彈窗），exclude 從裡面挖掉。
+   * @returns {{context, info} | {error: 'invalid-selector'|'no-match', selector}}
+   */
+  function scopeContext(opts) {
+    const include = typeof opts.include === 'string' ? opts.include.trim() : '';
+    const exclude = typeof opts.exclude === 'string' ? opts.exclude.trim() : '';
+    if (!include && !exclude) return { context: document, info: null };
+    const count = (sel) => {
+      try {
+        return document.querySelectorAll(sel).length;
+      } catch (e) {
+        return -1;
+      }
+    };
+    const inc = include ? count(include) : null;
+    const exc = exclude ? count(exclude) : null;
+    if (inc === -1) return { error: 'invalid-selector', selector: include };
+    if (exc === -1) return { error: 'invalid-selector', selector: exclude };
+    if (inc === 0) return { error: 'no-match', selector: include };
+    const context = {};
+    if (include) context.include = [include];
+    if (exclude) context.exclude = [exclude];
+    return {
+      context,
+      info: {
+        include: include || null,
+        includeCount: inc,
+        exclude: exclude || null,
+        excludeCount: exc,
+      },
+    };
+  }
+
+  // ===== 在頁面上點選掃描範圍 =====
+  // popup 一失焦就關，沒辦法邊開著邊點頁面：popup 開始點選後自己關掉，使用者點一個元素，
+  // 選擇器存在頁面端（window.__rampA11yPicked），再按一次工具列圖示，popup 讀回來填進「掃描範圍」。
+  const PICK_TOAST_ID = 'ramp-a11y-pick-toast';
+  let pickState = null;
+
+  function pickToast(text) {
+    let t = document.getElementById(PICK_TOAST_ID);
+    if (!t) {
+      t = document.createElement('div');
+      t.id = PICK_TOAST_ID;
+      t.setAttribute('role', 'status');
+      t.style.cssText =
+        'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
+        'max-width:90vw;padding:8px 14px;border-radius:8px;background:#0F766E;color:#fff;' +
+        'font:14px/1.5 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+      document.documentElement.appendChild(t);
+    }
+    t.textContent = text; // 頁面來源的選擇器只走 textContent，不進 innerHTML
+    return t;
+  }
+
+  /**
+   * 點到的元素 → 選擇器。先用 axe 自己的 getSelector（跟掃描結果的 target 同一套寫法）；
+   * 它要 axe.setup() 建好的選擇器資料，用完 teardown。axe 不在或失敗時退回：有 id 用 id，
+   * 否則從最近一個有 id 的祖先（或 html）一路寫 nth-of-type。
+   */
+  function pickSelector(el) {
+    if (window.axe && window.axe.utils && typeof window.axe.setup === 'function') {
+      try {
+        window.axe.setup(document);
+        try {
+          const s = window.axe.utils.getSelector(el);
+          if (s && document.querySelector(s) === el) return s;
+        } finally {
+          window.axe.teardown();
+        }
+      } catch (err) {
+        /* 退回自己算 */
+      }
+    }
+    const esc = (v) =>
+      window.CSS && typeof window.CSS.escape === 'function'
+        ? window.CSS.escape(v)
+        : String(v).replace(/[^\w-]/g, (c) => '\\' + c);
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.id && document.querySelectorAll('#' + esc(n.id)).length === 1) {
+        parts.unshift('#' + esc(n.id));
+        break;
+      }
+      const tag = n.localName;
+      if (n === document.documentElement) {
+        parts.unshift(tag);
+        break;
+      }
+      let i = 1;
+      for (let p = n.previousElementSibling; p; p = p.previousElementSibling)
+        if (p.localName === tag) i++;
+      parts.unshift(`${tag}:nth-of-type(${i})`);
+    }
+    const s = parts.join(' > ');
+    return s && document.querySelector(s) === el ? s : null;
+  }
+
+  window.__rampA11yPickStop = function () {
+    if (!pickState) return;
+    document.removeEventListener('mouseover', pickState.over, true);
+    document.removeEventListener('click', pickState.click, true);
+    document.removeEventListener('keydown', pickState.key, true);
+    document.querySelectorAll('.' + PICK_CLASS).forEach((el) => el.classList.remove(PICK_CLASS));
+    pickState = null;
+  };
+
+  window.__rampA11yPickStart = function () {
+    window.__rampA11yPickStop();
+    window.__rampA11yClear();
+    ensureStyle();
+    const done = (msg) => {
+      window.__rampA11yPickStop();
+      const t = pickToast(msg);
+      setTimeout(() => t.remove(), 6000);
+    };
+    const over = (e) => {
+      document.querySelectorAll('.' + PICK_CLASS).forEach((el) => el.classList.remove(PICK_CLASS));
+      if (e.target && e.target.classList) e.target.classList.add(PICK_CLASS);
+    };
+    const click = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = e.target;
+      // 先拿掉點選外框的 class，不然 getSelector 可能把 .ramp-a11y-pick 寫進選擇器
+      document.querySelectorAll('.' + PICK_CLASS).forEach((x) => x.classList.remove(PICK_CLASS));
+      const sel = pickSelector(el);
+      if (!sel) {
+        done('無法為這個元素產生選擇器，請改用手動輸入');
+        return;
+      }
+      window.__rampA11yPicked = sel;
+      done(`已選取 ${sel}——再按一次 Ramp 圖示即可只掃這一塊`);
+    };
+    const key = (e) => {
+      if (e.key === 'Escape') done('已取消點選');
+    };
+    pickState = { over, click, key };
+    document.addEventListener('mouseover', over, true);
+    document.addEventListener('click', click, true);
+    document.addEventListener('keydown', key, true);
+    pickToast('點選要掃描的區塊（Esc 取消）');
+    return true;
   };
 
   // ===== NVDA 報讀預覽 =====
@@ -1251,12 +1403,18 @@
    * 執行 axe 掃描（JavaScript 執行後的實際 DOM），
    * 只回傳可序列化的純資料（executeScript 的結果必須可 JSON 化）。
    */
-  window.__rampA11yScan = async function () {
+  window.__rampA11yScan = async function (opts) {
     tableGridCache = new WeakMap(); // 頁面可能已變動，格點快取只在單次掃描內有效
     // 掃描前先清掉舊高亮，避免高亮樣式影響結果
     window.__rampA11yClear();
+    window.__rampA11yPickStop();
 
-    const results = await window.axe.run(document, {
+    // 局部掃描：include／exclude 是 CSS 選擇器（popup 的「掃描範圍」、CLI 的 --scope／--scope-exclude）。
+    // 選擇器寫錯、或一個元素都對不到，回傳 { error } 讓呼叫端講清楚——不能退回掃整頁假裝成功
+    const scope = scopeContext(opts || {});
+    if (scope.error) return { url: location.href, error: scope.error, selector: scope.selector };
+
+    const results = await window.axe.run(scope.context, {
       // MVP 僅掃描主頁面；跨來源 iframe 無法注入 axe，開啟會導致逾時
       iframes: false,
       resultTypes: ['violations', 'incomplete'],
@@ -1333,6 +1491,8 @@
         url: location.href,
         violations: pick(results.violations),
         incomplete: pick(results.incomplete),
+        // 局部掃描的範圍（整頁是 null）：報告要寫明只掃了哪裡
+        scope: scope.info,
       };
     } finally {
       if (didSetup) {
@@ -1348,6 +1508,8 @@
 
   // 內部純函式的測試掛勾（供 test/unit 存取；不影響正式行為，也不被 popup 使用）
   window.__rampA11yInternals = {
+    scopeContext,
+    pickSelector,
     nvdaValue,
     nvdaPosition,
     nvdaItemCount,

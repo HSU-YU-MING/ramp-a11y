@@ -69,6 +69,8 @@ function parseCliArgs(argv) {
       include: { type: 'string' },
       exclude: { type: 'string' },
       'url-list': { type: 'string' },
+      scope: { type: 'string' },
+      'scope-exclude': { type: 'string' },
       level: { type: 'string', default: 'AA' },
       'fail-on': { type: 'string', default: 'none' },
       out: { type: 'string', default: './ramp-report' },
@@ -99,6 +101,11 @@ const HELP = `ramp-scan — 全站爬掃 CLI
   --exclude <regex>  跳過符合的 URL（同上，起始頁不受此限）
   --url-list <file>  改掃清單中的 URL（.txt 每行一個，或 PolyMigrate url_inventory.csv）
 
+局部掃描（每一頁都只掃這一塊）
+  --scope <css>         只掃符合 CSS 選擇器的元素（如 "#main"、".modal"；對到幾個掃幾個）。
+                        某一頁對不到任何元素 → 那一頁記為失敗（不會退回掃整頁）
+  --scope-exclude <css> 從掃描範圍挖掉符合的元素（如 ".ad, #cookie-banner"）
+
 輸出／執行
   --level <A|AA|AAA> 目標檢測等級（預設 AA）
   --fail-on <cond>   none｜violations（預設 none）：violations 時，掃出「--level 目標內、已對應
@@ -115,7 +122,8 @@ const HELP = `ramp-scan — 全站爬掃 CLI
 
 離開碼
   0  掃描完成（未觸發 --fail-on）
-  1  參數錯誤（不認得的旗標、旗標缺值或值不合法、無效的 regex、清單檔不存在或為空、
+  1  參數錯誤（不認得的旗標、旗標缺值或值不合法、無效的 regex、--scope／--scope-exclude 不是
+     有效的 CSS 選擇器、清單檔不存在或為空、
      起始網址或清單全部被 --include/--exclude 排除）
   2  掃描錯誤（單頁模式掃描失敗；多頁模式「全部」頁面都失敗。部分頁面失敗仍為 0，失敗數見報告）
   3  --fail-on 條件觸發
@@ -254,7 +262,18 @@ function buildPageReport(url, finalUrl, title, scan) {
     violations: violations.sort((a, b) => b.nodeCount - a.nodeCount),
     bestPractice,
     incomplete,
+    // 局部掃描的範圍（整頁是 null）
+    scope: scan.scope || null,
   };
+}
+
+/** 報告頁首的範圍說明（整頁回 null） */
+function scopeLine(scope) {
+  if (!scope || !(scope.include || scope.exclude)) return null;
+  const parts = [];
+  if (scope.include) parts.push(`只掃描 ${scope.include}`);
+  if (scope.exclude) parts.push(`排除 ${scope.exclude}`);
+  return `檢測範圍：${parts.join('、')}（範圍外的問題不在本報告）`;
 }
 
 /**
@@ -287,10 +306,21 @@ async function visitPage(browser, url, opts) {
       await page.addScriptTag({ content: fs.readFileSync(path.join(REPO, f), 'utf8') });
     }
     const scan = await withTimeout(
-      page.evaluate(async () => await window.__rampA11yScan()),
+      page.evaluate(async (o) => await window.__rampA11yScan(o), {
+        include: opts.scope || '',
+        exclude: opts.scopeExclude || '',
+      }),
       opts.timeout,
       '掃描',
     );
+    // 範圍對不到（或選擇器在這頁才出錯）：這一頁算失敗，不退回掃整頁假裝成功
+    if (scan && scan.error) {
+      throw new Error(
+        scan.error === 'no-match'
+          ? `這一頁找不到 --scope 指定的範圍「${scan.selector}」`
+          : `「${scan.selector}」不是有效的 CSS 選擇器`,
+      );
+    }
     const links = await withTimeout(
       page.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => a.href)),
       opts.timeout,
@@ -751,6 +781,7 @@ function buildSiteHtml(site) {
   const tsp = targetSplit(a.byLevel, site.targetLevel);
   const header = reportHeader('Ramp 全站無障礙檢測報告', [
     `檢測來源：${site.source}`,
+    ...[scopeLine(site.scope)].filter(Boolean),
     `檢測時間：${time}`,
     `模式：${site.crawl.mode}・掃描 ${a.pagesScanned} 頁（失敗 ${site.crawl.pagesFailed}${site.crawl.truncated ? '，達上限截斷' : ''}）`,
     `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core ${AXE_VERSION}`,
@@ -795,6 +826,7 @@ function buildPageHtml(out) {
   const tsp = targetSplit(s.byLevel, out.targetLevel);
   const header = reportHeader('Ramp 無障礙檢測報告', [
     `檢測網址：${out.finalUrl}`,
+    ...[scopeLine(out.scope)].filter(Boolean),
     `檢測時間：${time}`,
     `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core ${AXE_VERSION}`,
     `目標等級 ${out.targetLevel}：目標內 ${tsp.within} 項・超出目標 ${tsp.beyond} 項（報告仍列出全部）`,
@@ -897,7 +929,13 @@ async function main() {
     pass,
     timeout: num(values.timeout, 'timeout', 1000),
     chrome: values.chrome,
+    scope: (values.scope || '').trim(),
+    scopeExclude: (values['scope-exclude'] || '').trim(),
   };
+  if (values.scope !== undefined && !opts.scope) {
+    console.error('--scope 不能是空字串（要掃整頁就不要加 --scope）');
+    process.exit(1);
+  }
   const log = values.quiet ? () => {} : (m) => console.error(m);
   const version = VERSION;
   const started = Date.now();
@@ -938,6 +976,32 @@ async function main() {
   });
 
   try {
+    // --scope／--scope-exclude 寫錯是參數錯誤（exit 1）：在空白頁用瀏覽器自己的解析器先驗一次，
+    // 不要等每一頁都失敗才變成掃描錯誤（exit 2）
+    for (const [flag, sel] of [
+      ['--scope', opts.scope],
+      ['--scope-exclude', opts.scopeExclude],
+    ]) {
+      if (!sel) continue;
+      const probe = await browser.newPage();
+      try {
+        const ok = await probe.evaluate((s) => {
+          try {
+            document.querySelector(s);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }, sel);
+        if (!ok) {
+          console.error(`${flag} 不是有效的 CSS 選擇器：${sel}`);
+          process.exitCode = 1;
+          return;
+        }
+      } finally {
+        await probe.close();
+      }
+    }
     if (!multi) {
       // 單頁
       log(`掃描 ${url} …`);
@@ -990,6 +1054,11 @@ async function main() {
       scannedAt: new Date(started).toISOString(),
       targetLevel: values.level,
       source,
+      // 局部掃描的範圍（每一頁都一樣；整頁是 null）
+      scope:
+        opts.scope || opts.scopeExclude
+          ? { include: opts.scope || null, exclude: opts.scopeExclude || null }
+          : null,
       crawl: {
         mode,
         pagesScanned: result.pages.filter((p) => p.ok !== false).length,

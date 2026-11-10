@@ -33,6 +33,10 @@ const loadingTextEl = document.querySelector('#view-loading .loading-text');
 const modeTabs = document.getElementById('mode-tabs');
 const toolbarEl = document.querySelector('.toolbar');
 const readingSummaryEl = document.getElementById('reading-summary');
+const scopeInput = document.getElementById('scope-input');
+const scopeErrorEl = document.getElementById('scope-error');
+const scopeNoteEl = document.getElementById('scope-note');
+const btnPick = document.getElementById('btn-pick');
 
 // ===== 全域狀態 =====
 let rulesMap = new Map(); // axeRuleId → 對應表項目
@@ -42,6 +46,8 @@ let currentMode = 'issues'; // 檢視模式：issues（檢測問題）| reading�
 let readingData = null; // 朗讀順序資料快取（每次重新檢測時失效）
 let scanGeneration = 0; // 每次重新檢測 +1：分析途中被重新檢測蓋過的舊結果不得寫回快取
 let liveTimer = null; // 動態播報輪詢計時器
+// 局部掃描的範圍（CSS 選擇器；空字串＝整頁）。「開始檢測」從輸入框讀，「重新檢測」沿用上次的
+let scanScope = '';
 // 內建對比檢查器的量測結果：selector → 結果（重新檢測時清空；匯出報告會帶上）
 let contrastMeasured = new Map();
 
@@ -224,10 +230,30 @@ async function ensureInjected(tabId) {
   }
 }
 
+/** 範圍有問題：回初始畫面、輸入框填回那個範圍，錯誤寫在輸入框下面 */
+function showScopeError(msg) {
+  scopeInput.value = scanScope;
+  scopeErrorEl.textContent = msg; // 頁面與使用者輸入的字串只走 textContent
+  scopeErrorEl.hidden = false;
+  showView('initial');
+  scopeInput.focus();
+}
+
+/** 結果面板的範圍列：一律寫明掃了哪裡（整頁或某個範圍），附「改範圍」（與局部掃描時的「改掃整頁」） */
+function renderScopeNote(scope) {
+  const change = '<button id="btn-change-scope" class="btn-link" type="button">改範圍</button>';
+  scopeNoteEl.innerHTML =
+    scope && scope.include
+      ? `只掃描了範圍 <code>${escapeHtml(scope.include)}</code>（${Number(scope.includeCount)} 個元素），範圍外的問題不在結果裡。 ${change} <button id="btn-full-scan" class="btn-link" type="button">改掃整頁</button>`
+      : `掃描範圍：整個頁面 ${change}`;
+  scopeNoteEl.hidden = currentMode !== 'issues';
+}
+
 async function runScan() {
   showView('loading');
   readingData = null; // 頁面即將重新檢測，舊的朗讀順序失效
   contrastMeasured = new Map(); // 舊的對比量測跟著失效
+  scopeErrorEl.hidden = true;
   scanGeneration += 1;
   try {
     await loadRulesMap();
@@ -256,12 +282,22 @@ async function runScan() {
     // 步驟二：執行掃描，取回序列化的純資料
     const injection = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => window.__rampA11yScan(),
+      func: (o) => window.__rampA11yScan(o),
+      args: [{ include: scanScope }],
     });
 
     const result = injection && injection[0] && injection[0].result;
     if (!result) {
       showError('檢測失敗', '掃描未回傳結果，請重新整理頁面後再試。', true);
+      return;
+    }
+    // 範圍寫錯或對不到：回初始畫面、在輸入框下說清楚，不退回掃整頁假裝成功
+    if (result.error) {
+      showScopeError(
+        result.error === 'invalid-selector'
+          ? `「${result.selector}」不是有效的 CSS 選擇器。`
+          : `頁面上找不到「${result.selector}」——元素可能還沒出現（彈窗要先打開），或選擇器寫錯了。`,
+      );
       return;
     }
 
@@ -612,6 +648,7 @@ function renderResults(result, cachedTs) {
   const { violations, bestPractice, incomplete } = classifyResults(result);
 
   renderStats(violations, bestPractice.length, incomplete.length);
+  renderScopeNote(result.scope);
 
   // 快取還原提示
   if (cachedTs) {
@@ -744,6 +781,8 @@ function setModeUI(mode) {
   const issuesMode = mode === 'issues';
   statsEl.hidden = !issuesMode;
   toolbarEl.hidden = !issuesMode;
+  // 範圍提示只跟檢測問題走（朗讀順序與動態播報看的是整頁）
+  scopeNoteEl.hidden = !issuesMode || !lastScan;
   if (!issuesMode) {
     cacheNoteEl.hidden = true; // 非檢測問題模式不顯示快取提示
   } else {
@@ -1161,6 +1200,7 @@ function buildReportHtml(scan) {
 <header>
   <h1>Ramp 無障礙檢測報告</h1>
   <p class="info">檢測網址：${escapeHtml(scan.url)}<br>
+  ${scan.result.scope && scan.result.scope.include ? `檢測範圍：只掃描 <code>${escapeHtml(scan.result.scope.include)}</code>（${Number(scan.result.scope.includeCount)} 個元素），範圍外的問題不在本報告<br>` : ''}
   檢測時間：${escapeHtml(time)}<br>
   工具：Ramp（ramp-a11y）v${escapeHtml(version)}・檢測引擎 axe-core ${escapeHtml(AXE_VERSION)}<br>
   對應標準：台灣「網站無障礙規範」115 年修正版（對齊 WCAG 2.2，自 115 年 11 月 30 日生效）</p>
@@ -1207,7 +1247,47 @@ function exportReport() {
 
 // ===== 事件繫結 =====
 
-btnScan.addEventListener('click', runScan);
+btnScan.addEventListener('click', () => {
+  scanScope = scopeInput.value.trim(); // 「開始檢測」用輸入框的範圍；重新檢測沿用上次的
+  runScan();
+});
+scopeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') btnScan.click();
+});
+scopeNoteEl.addEventListener('click', (e) => {
+  if (e.target.closest('#btn-full-scan')) {
+    scanScope = '';
+    scopeInput.value = '';
+    runScan();
+    return;
+  }
+  // 改範圍：回初始畫面（範圍輸入框與「在頁面上點選」都在那裡），填好目前的範圍
+  if (e.target.closest('#btn-change-scope')) {
+    scopeInput.value = (lastScan && lastScan.result.scope && lastScan.result.scope.include) || '';
+    scopeErrorEl.hidden = true;
+    showView('initial');
+    scopeInput.focus();
+  }
+});
+// 在頁面上點選範圍：popup 一失焦就關，所以開始點選後自己關掉；選好的選擇器存在頁面端，
+// 再按一次工具列圖示時 initPopup 讀回來
+btnPick.addEventListener('click', async () => {
+  try {
+    const tab = await getActiveTab();
+    if (!tab || isRestrictedUrl(tab.url)) {
+      showScopeError('這個頁面無法點選（瀏覽器內建頁面或擴充功能商店）。');
+      return;
+    }
+    await ensureInjected(tab.id); // 產生選擇器要用 axe
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.__rampA11yPickStart(),
+    });
+    window.close();
+  } catch (err) {
+    showScopeError(`無法開始點選：${err && err.message ? err.message : err}`);
+  }
+});
 btnRescan.addEventListener('click', runScan);
 btnRetry.addEventListener('click', runScan);
 btnExport.addEventListener('click', exportReport);
@@ -1287,6 +1367,23 @@ issuesEl.addEventListener('change', async (e) => {
         '瀏覽器內建頁面（chrome:// 等）與擴充功能商店基於安全限制，無法注入檢測腳本。請切換到一般網頁再試。',
         false,
       );
+      return;
+    }
+    // 剛在頁面上點選了範圍：填進輸入框、停在初始畫面等使用者按「開始檢測」（優先於快取還原）
+    const pickedRes = await chrome.scripting
+      .executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const p = window.__rampA11yPicked || null;
+          window.__rampA11yPicked = null;
+          return p;
+        },
+      })
+      .catch(() => null);
+    const picked = pickedRes && pickedRes[0] && pickedRes[0].result;
+    if (picked) {
+      scopeInput.value = picked;
+      btnScan.focus();
       return;
     }
     const key = 'scan_' + tab.id;
