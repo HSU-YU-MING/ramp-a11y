@@ -439,6 +439,169 @@ fs.rmSync(tmp, { recursive: true, force: true });
     check('局部掃描：全站報告頁首也寫明範圍', siteHtml.includes('檢測範圍：只掃描 .modal'));
   }
 
+  // ===== 登入後掃描（cli/auth.js）：cookie 檔、自訂標頭、登出網址、憑證不外洩 =====
+  {
+    const A = require(path.resolve(__dirname, '..', '..', 'cli', 'auth.js'));
+    const json = A.parseCookieFile(
+      JSON.stringify([
+        {
+          name: 'sid',
+          value: 's3cret',
+          domain: '.gov.test',
+          path: '/',
+          sameSite: 'no_restriction',
+          expirationDate: 2000000000,
+        },
+      ]),
+    );
+    check(
+      'cookie：Chrome 擴充匯出的 JSON（expirationDate、no_restriction）轉成 setCookie 格式',
+      json[0].expires === 2000000000 &&
+        json[0].sameSite === 'None' &&
+        json[0].domain === '.gov.test',
+      JSON.stringify(json),
+    );
+    eq(
+      'cookie：{ cookies: [...] } 包一層也認',
+      A.parseCookieFile('{"cookies":[{"name":"a","value":"b","domain":"x.test"}]}').length,
+      1,
+    );
+    const ns = A.parseCookieFile(
+      '﻿# Netscape HTTP Cookie File\n#HttpOnly_.x.test\tTRUE\t/\tTRUE\t0\tsid\tv\twith-tab\n',
+    );
+    check(
+      'cookie：Netscape cookies.txt（BOM、#HttpOnly_、值裡有 Tab）',
+      ns.length === 1 && ns[0].httpOnly && ns[0].secure && ns[0].value === 'v\twith-tab',
+      JSON.stringify(ns),
+    );
+    const throwsMsg = (fn) => {
+      try {
+        fn();
+        return null;
+      } catch (e) {
+        return e.message;
+      }
+    };
+    const leak = throwsMsg(() => A.parseCookieFile('[{"name":"sid","value":"TOPSECRET"}]'));
+    check(
+      'cookie：缺 domain 是錯誤，訊息不帶 cookie 值',
+      !!leak && leak.includes('domain') && !leak.includes('TOPSECRET'),
+      leak,
+    );
+    check('cookie：壞掉的 JSON 是錯誤', !!throwsMsg(() => A.parseCookieFile('[{"name":')));
+    check('cookie：空檔是錯誤', !!throwsMsg(() => A.parseCookieFile('  ')));
+    check(
+      'cookie：cookies.txt 欄位不夠是錯誤（指出第幾行）',
+      /第 2 行/.test(throwsMsg(() => A.parseCookieFile('# c\nfoo\tbar'))),
+    );
+
+    const h = A.parseHeaders(['Authorization: Bearer abc', 'X-Env:  staging ']);
+    check(
+      '標頭：解析多個、值去頭尾空白',
+      h.Authorization === 'Bearer abc' && h['X-Env'] === 'staging',
+      JSON.stringify(h),
+    );
+    check('標頭：沒有冒號是錯誤', !!throwsMsg(() => A.parseHeaders(['Authorization Bearer'])));
+    check('標頭：不能改 Host', !!throwsMsg(() => A.parseHeaders(['Host: evil.test'])));
+    check(
+      '標頭：Cookie 要用 --cookies（會綁網域）',
+      /--cookies/.test(throwsMsg(() => A.parseHeaders(['cookie: a=b']))),
+    );
+
+    check(
+      '登出網址：logout／sign-out／登出／logoff 都認得',
+      [
+        'https://x.test/logout',
+        'https://x.test/a/Sign-Out?x=1',
+        'https://x.test/%E7%99%BB%E5%87%BA',
+        'https://x.test/user/logoff',
+      ].every(A.isLogoutUrl),
+    );
+    check(
+      '登出網址：一般頁面不算',
+      !['https://x.test/login', 'https://x.test/blog/outline', 'https://x.test/signup'].some(
+        A.isLogoutUrl,
+      ),
+    );
+    eq(
+      '報告只記方式：cookies＋header＋profile＋login',
+      A.authMethods({
+        cookies: 'c.json',
+        header: ['A: b'],
+        'user-data-dir': 'p',
+        login: true,
+      }).join(','),
+      'cookies,header,profile,login',
+    );
+    eq('沒登入 → 沒有登入狀態那一行', A.authLine([]), null);
+
+    // visitPage：cookie 在 goto 之前設好；自訂標頭只加給被掃網站的來源
+    const seen = [];
+    let handler = null;
+    const page = {
+      setViewport: async () => {},
+      setUserAgent: async () => {},
+      setBypassCSP: async () => {},
+      setCookie: async (...c) => seen.push('cookie:' + c.map((x) => x.name).join(',')),
+      setRequestInterception: async (v) => seen.push('intercept:' + v),
+      on: (ev, fn) => {
+        if (ev === 'request') handler = fn;
+      },
+      goto: async () => seen.push('goto'),
+      title: async () => 't',
+      addScriptTag: async () => {},
+      evaluate: async () =>
+        seen.includes('scan') ? [] : (seen.push('scan'), { violations: [], incomplete: [] }),
+      url: () => 'https://gov.test/admin',
+      close: async () => {},
+    };
+    await cli.visitPage({ newPage: async () => page }, 'https://gov.test/admin', {
+      timeout: 5000,
+      cookies: [{ name: 'sid', value: 'x', domain: 'gov.test' }],
+      headers: { Authorization: 'Bearer abc' },
+      headerOrigins: new Set(['https://gov.test']),
+    });
+    check(
+      'visitPage：cookie 與攔截在 goto 之前',
+      seen.indexOf('cookie:sid') >= 0 &&
+        seen.indexOf('intercept:true') >= 0 &&
+        seen.indexOf('cookie:sid') < seen.indexOf('goto'),
+      seen.join(' → '),
+    );
+    const sent = [];
+    const fakeReq = (url) => ({
+      url: () => url,
+      headers: () => ({ accept: '*/*' }),
+      continue: (o) => sent.push([url, o && o.headers ? o.headers.Authorization || null : null]),
+    });
+    handler(fakeReq('https://gov.test/api/me'));
+    handler(fakeReq('https://cdn.example/lib.js'));
+    check(
+      'visitPage：標頭只送被掃網站的來源，第三方資源不帶',
+      sent[0][1] === 'Bearer abc' && sent[1][1] === null,
+      JSON.stringify(sent),
+    );
+    const html = cli.buildPageHtml({
+      scannedAt: '2026-11-30T00:00:00.000Z',
+      finalUrl: 'https://gov.test/admin',
+      version: '0.0.0',
+      targetLevel: 'AA',
+      auth: ['cookies', 'header'],
+      summary: {
+        violations: 0,
+        affectedElements: 0,
+        byLevel: { A: 0, AA: 0, AAA: 0, unmapped: 0 },
+        bestPractice: 0,
+        needsManualReview: 0,
+      },
+      violations: [],
+    });
+    check(
+      '報告頁首寫明登入方式、不含憑證',
+      html.includes('登入狀態：以cookie 檔＋自訂標頭掃描') && !html.includes('Bearer'),
+    );
+  }
+
   const fails = results.filter((r) => !r.ok).length;
   console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
   process.exit(fails ? 1 : 0);

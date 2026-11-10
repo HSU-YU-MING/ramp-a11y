@@ -25,6 +25,14 @@ const path = require('path');
 const puppeteer = require('puppeteer-core');
 const { AXE_VERSION, escapeHtml, resolveMapping, nvdaParts } = require('../shared/report-core.js');
 const { MANUAL_CHECKS, manualChecksForLevel } = require('../shared/manual-checks.js');
+const {
+  parseCookieFile,
+  parseHeaders,
+  isLogoutUrl,
+  originOf,
+  authMethods,
+  authLine,
+} = require('./auth.js');
 
 const REPO = path.resolve(__dirname, '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
@@ -71,6 +79,11 @@ function parseCliArgs(argv) {
       'url-list': { type: 'string' },
       scope: { type: 'string' },
       'scope-exclude': { type: 'string' },
+      cookies: { type: 'string' },
+      header: { type: 'string', multiple: true },
+      'user-data-dir': { type: 'string' },
+      login: { type: 'boolean', default: false },
+      'login-url': { type: 'string' },
       level: { type: 'string', default: 'AA' },
       'fail-on': { type: 'string', default: 'none' },
       out: { type: 'string', default: './ramp-report' },
@@ -105,6 +118,15 @@ const HELP = `ramp-scan — 全站爬掃 CLI
   --scope <css>         只掃符合 CSS 選擇器的元素（如 "#main"、".modal"；對到幾個掃幾個）。
                         某一頁對不到任何元素 → 那一頁記為失敗（不會退回掃整頁）
   --scope-exclude <css> 從掃描範圍挖掉符合的元素（如 ".ad, #cookie-banner"）
+
+登入後掃描（機關後台、會員頁；憑證的值不寫進報告、不印出來）
+  --cookies <file>      匯入 cookie：DevTools／擴充功能匯出的 JSON，或 Netscape cookies.txt
+  --header "名稱: 值"   自訂標頭（可重複，如 Authorization），只送給被掃網站自己的來源
+  --user-data-dir <dir> 用這個 Chrome 設定檔（裡面已登入的工作階段直接沿用；沒有就建立）
+  --login               先開一個看得見的 Chrome 讓你自己登入（驗證碼、自然人憑證都行），
+                        回終端機按 Enter 後才開始掃；沒給 --user-data-dir 時用暫存設定檔、掃完刪除
+  --login-url <url>     --login 開哪一頁（預設起始網址或清單第一筆）
+  用了任何一種，爬掃與清單都會跳過看起來像登出的網址（logout、sign-out、登出…），免得把自己登出
 
 輸出／執行
   --level <A|AA|AAA> 目標檢測等級（預設 AA）
@@ -300,6 +322,20 @@ async function visitPage(browser, url, opts) {
     // 擋下的頁面腳本在掃描工作階段裡也會執行，DOM 可能與真實使用者看到的略有不同
     //（SECURITY.md 已揭露）。
     await page.setBypassCSP(true);
+    // 登入後掃描：cookie 綁網域（Chrome 自己決定送給誰）；自訂標頭只送被掃網站的來源，
+    // 不跟著頁面上的第三方資源（CDN、分析、廣告）出去
+    if (opts.cookies && opts.cookies.length) await page.setCookie(...opts.cookies);
+    if (opts.headers && Object.keys(opts.headers).length) {
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (req.isInterceptResolutionHandled && req.isInterceptResolutionHandled()) return;
+        if (opts.headerOrigins && opts.headerOrigins.has(originOf(req.url()))) {
+          req.continue({ headers: { ...req.headers(), ...opts.headers } });
+        } else {
+          req.continue();
+        }
+      });
+    }
     await page.goto(url, { waitUntil: 'networkidle2', timeout: opts.timeout });
     const title = await page.title();
     for (const f of INJECT) {
@@ -781,7 +817,7 @@ function buildSiteHtml(site) {
   const tsp = targetSplit(a.byLevel, site.targetLevel);
   const header = reportHeader('Ramp 全站無障礙檢測報告', [
     `檢測來源：${site.source}`,
-    ...[scopeLine(site.scope)].filter(Boolean),
+    ...[scopeLine(site.scope), authLine(site.auth)].filter(Boolean),
     `檢測時間：${time}`,
     `模式：${site.crawl.mode}・掃描 ${a.pagesScanned} 頁（失敗 ${site.crawl.pagesFailed}${site.crawl.truncated ? '，達上限截斷' : ''}）`,
     `工具：Ramp（ramp-a11y）v${site.version}・檢測引擎 axe-core ${AXE_VERSION}`,
@@ -826,7 +862,7 @@ function buildPageHtml(out) {
   const tsp = targetSplit(s.byLevel, out.targetLevel);
   const header = reportHeader('Ramp 無障礙檢測報告', [
     `檢測網址：${out.finalUrl}`,
-    ...[scopeLine(out.scope)].filter(Boolean),
+    ...[scopeLine(out.scope), authLine(out.auth)].filter(Boolean),
     `檢測時間：${time}`,
     `工具：Ramp（ramp-a11y）v${out.version}・檢測引擎 axe-core ${AXE_VERSION}`,
     `目標等級 ${out.targetLevel}：目標內 ${tsp.within} 項・超出目標 ${tsp.beyond} 項（報告仍列出全部）`,
@@ -936,6 +972,36 @@ async function main() {
     console.error('--scope 不能是空字串（要掃整頁就不要加 --scope）');
     process.exit(1);
   }
+  // 登入後掃描：憑證格式錯是參數錯誤（exit 1）；錯誤訊息只說哪一筆、哪個欄位，不印值
+  const auth = authMethods(values);
+  if (values.cookies) {
+    if (!fs.existsSync(values.cookies)) {
+      console.error(`--cookies 檔案不存在：${values.cookies}`);
+      process.exit(1);
+    }
+    try {
+      opts.cookies = parseCookieFile(fs.readFileSync(values.cookies, 'utf8'));
+    } catch (e) {
+      console.error(`--cookies：${e.message}`);
+      process.exit(1);
+    }
+  }
+  try {
+    opts.headers = parseHeaders(values.header);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+  if (values['login-url'] && !values.login) {
+    console.error('--login-url 要搭配 --login');
+    process.exit(1);
+  }
+  if (values.login && !process.stdin.isTTY) {
+    console.error(
+      '--login 要在互動終端機執行（登入完要按 Enter）；CI 請改用 --cookies 或 --header',
+    );
+    process.exit(1);
+  }
   const log = values.quiet ? () => {} : (m) => console.error(m);
   const version = VERSION;
   const started = Date.now();
@@ -969,134 +1035,204 @@ async function main() {
     process.exit(1);
   }
 
-  const browser = await puppeteer.launch({
-    executablePath: findChrome(opts.chrome),
-    headless: true,
-    args: chromeLaunchArgs(values['no-sandbox'], process.env),
-  });
+  if (auth.length) {
+    // 自訂標頭只送這些來源：單頁／爬掃是起始網址的來源（爬掃不出站），清單是每一筆的來源
+    opts.headerOrigins = new Set(
+      (listEntries ? listEntries.map((e) => e.url) : [normalizeUrl(url)])
+        .map(originOf)
+        .filter(Boolean),
+    );
+    // 跳過登出網址（起始頁照掃——是使用者自己指定的）
+    const basePass = opts.pass;
+    opts.pass = (u) => basePass(u) && !isLogoutUrl(u);
+    if (listEntries) {
+      const n = listEntries.filter((e) => basePass(e.url) && isLogoutUrl(e.url)).length;
+      if (n) log(`提醒：清單裡有 ${n} 筆看起來像登出網址，已略過（登入後掃描不能把自己登出）`);
+    }
+  }
 
+  // --login：先開看得見的 Chrome 讓使用者自己登入，關掉後用同一個設定檔掃
+  let tempProfile = null;
+  let userDataDir = values['user-data-dir'];
+  if (values.login && !userDataDir) {
+    tempProfile = fs.mkdtempSync(path.join(require('os').tmpdir(), 'ramp-login-'));
+    userDataDir = tempProfile;
+  }
   try {
-    // --scope／--scope-exclude 寫錯是參數錯誤（exit 1）：在空白頁用瀏覽器自己的解析器先驗一次，
-    // 不要等每一頁都失敗才變成掃描錯誤（exit 2）
-    for (const [flag, sel] of [
-      ['--scope', opts.scope],
-      ['--scope-exclude', opts.scopeExclude],
-    ]) {
-      if (!sel) continue;
-      const probe = await browser.newPage();
+    if (values.login) {
+      const loginUrl =
+        values['login-url'] || (listEntries ? listEntries[0].url : normalizeUrl(url));
+      const visible = await puppeteer.launch({
+        executablePath: findChrome(opts.chrome),
+        headless: false,
+        defaultViewport: null,
+        userDataDir,
+        args: chromeLaunchArgs(values['no-sandbox'], process.env),
+      });
       try {
-        const ok = await probe.evaluate((s) => {
-          try {
-            document.querySelector(s);
-            return true;
-          } catch (e) {
-            return false;
-          }
-        }, sel);
-        if (!ok) {
-          console.error(`${flag} 不是有效的 CSS 選擇器：${sel}`);
-          process.exitCode = 1;
-          return;
-        }
+        const pages = await visible.pages();
+        const p = pages[0] || (await visible.newPage());
+        await p
+          .goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: opts.timeout })
+          .catch(() => {});
+        console.error(
+          `已開啟 Chrome：請在視窗裡登入 ${loginUrl}，完成後回到這裡按 Enter 開始掃描…`,
+        );
+        await new Promise((resolve) => {
+          process.stdin.resume();
+          process.stdin.once('data', () => {
+            process.stdin.pause();
+            resolve();
+          });
+        });
       } finally {
-        await probe.close();
+        await visible.close();
       }
     }
-    if (!multi) {
-      // 單頁
-      log(`掃描 ${url} …`);
-      const { report } = await visitPage(browser, normalizeUrl(url), opts);
-      const out = {
+    await runWithBrowser(userDataDir);
+  } finally {
+    if (tempProfile) fs.rmSync(tempProfile, { recursive: true, force: true });
+  }
+
+  async function runWithBrowser(profileDir) {
+    const browser = await puppeteer.launch({
+      executablePath: findChrome(opts.chrome),
+      headless: true,
+      ...(profileDir ? { userDataDir: profileDir } : {}),
+      args: chromeLaunchArgs(values['no-sandbox'], process.env),
+    });
+
+    try {
+      // --scope／--scope-exclude 寫錯是參數錯誤（exit 1）：在空白頁用瀏覽器自己的解析器先驗一次，
+      // 不要等每一頁都失敗才變成掃描錯誤（exit 2）
+      for (const [flag, sel] of [
+        ['--scope', opts.scope],
+        ['--scope-exclude', opts.scopeExclude],
+      ]) {
+        if (!sel) continue;
+        const probe = await browser.newPage();
+        try {
+          const ok = await probe.evaluate((s) => {
+            try {
+              document.querySelector(s);
+              return true;
+            } catch (e) {
+              return false;
+            }
+          }, sel);
+          if (!ok) {
+            console.error(`${flag} 不是有效的 CSS 選擇器：${sel}`);
+            process.exitCode = 1;
+            return;
+          }
+        } finally {
+          await probe.close();
+        }
+      }
+      if (!multi) {
+        // 單頁
+        log(`掃描 ${url} …`);
+        const { report } = await visitPage(browser, normalizeUrl(url), opts);
+        const out = {
+          tool: 'ramp-scan',
+          version,
+          scannedAt: new Date(started).toISOString(),
+          targetLevel: values.level,
+          ...report,
+          // 登入後掃描用了哪幾種方式（只有方式，沒有任何值）；沒登入是空陣列
+          auth,
+          manualChecks: manualChecksReport(values.level),
+        };
+        const base = safeHost(out.finalUrl);
+        const written = [];
+        if (fmtJson) written.push(writeReport(values.out, base, out));
+        if (fmtHtml) written.push(writeHtml(values.out, base, out.scannedAt, buildPageHtml(out)));
+        if (!values.quiet) printPageSummary(out);
+        log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
+        const code = singlePageExitCode(out.summary, values['fail-on'], values.level);
+        if (code === 3) {
+          const n = targetSplit(out.summary.byLevel, values.level).within;
+          console.error(
+            `✘ --fail-on violations：目標 ${values.level} 內有 ${n} 項違規（離開碼 3）`,
+          );
+        }
+        process.exitCode = code;
+        return;
+      }
+
+      // 多頁：爬蟲 或 URL 清單
+      let result;
+      let source;
+      let mode;
+      if (urlList) {
+        mode = 'url-list';
+        source = urlList;
+        const passedCount = listEntries.filter((e) => pass(e.url)).length;
+        log(
+          `從清單掃描 ${Math.min(passedCount, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
+        );
+        result = await scanList(browser, listEntries, opts, log);
+      } else {
+        mode = 'crawl';
+        source = url;
+        log(
+          `自 ${url} 爬取（深度 ${opts.depth}、上限 ${opts.maxPages}、並行 ${opts.concurrency}）…`,
+        );
+        result = await crawlSite(browser, url, opts, log);
+      }
+
+      const site = {
         tool: 'ramp-scan',
         version,
         scannedAt: new Date(started).toISOString(),
         targetLevel: values.level,
-        ...report,
+        source,
+        // 登入後掃描用了哪幾種方式（只有方式，沒有任何值）；沒登入是空陣列
+        auth,
+        // 局部掃描的範圍（每一頁都一樣；整頁是 null）
+        scope:
+          opts.scope || opts.scopeExclude
+            ? { include: opts.scope || null, exclude: opts.scopeExclude || null }
+            : null,
+        crawl: {
+          mode,
+          pagesScanned: result.pages.filter((p) => p.ok !== false).length,
+          pagesFailed: result.failed,
+          maxDepth: opts.depth,
+          maxPages: opts.maxPages,
+          truncated: result.truncated,
+        },
+        siteSummary: aggregate(result.pages),
         manualChecks: manualChecksReport(values.level),
+        byLanguage: aggregateByLanguage(result.pages),
+        pages: result.pages,
       };
-      const base = safeHost(out.finalUrl);
+      if (!site.byLanguage) delete site.byLanguage;
+
+      const base = mode === 'crawl' ? safeHost(source) + '-site' : 'urllist';
       const written = [];
-      if (fmtJson) written.push(writeReport(values.out, base, out));
-      if (fmtHtml) written.push(writeHtml(values.out, base, out.scannedAt, buildPageHtml(out)));
-      if (!values.quiet) printPageSummary(out);
+      if (fmtJson) written.push(writeReport(values.out, base, site));
+      if (fmtHtml) written.push(writeHtml(values.out, base, site.scannedAt, buildSiteHtml(site)));
+      if (!values.quiet) printSiteSummary(site);
       log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
-      const code = singlePageExitCode(out.summary, values['fail-on'], values.level);
-      if (code === 3) {
-        const n = targetSplit(out.summary.byLevel, values.level).within;
-        console.error(`✘ --fail-on violations：目標 ${values.level} 內有 ${n} 項違規（離開碼 3）`);
+
+      // 離開碼契約（見 --help 與 multiPageExitCode）：部分頁面失敗仍為 0（報告有記
+      // pagesFailed），避免大站零星逾時把 CI 弄紅
+      const code = multiPageExitCode(result.pages, values['fail-on'], values.level);
+      if (code === 2) {
+        console.error(
+          `✘ 全部 ${result.pages.length} 頁掃描失敗（離開碼 2），請檢查網路、CSP 或 --timeout`,
+        );
+      } else if (code === 3) {
+        const n = result.pages.filter(
+          (p) => p.ok !== false && failOnTriggered(p.summary.byLevel, 'violations', values.level),
+        ).length;
+        console.error(`✘ --fail-on violations：${n} 頁有目標 ${values.level} 內的違規（離開碼 3）`);
       }
       process.exitCode = code;
-      return;
+    } finally {
+      await browser.close();
     }
-
-    // 多頁：爬蟲 或 URL 清單
-    let result;
-    let source;
-    let mode;
-    if (urlList) {
-      mode = 'url-list';
-      source = urlList;
-      const passedCount = listEntries.filter((e) => pass(e.url)).length;
-      log(
-        `從清單掃描 ${Math.min(passedCount, opts.maxPages)} 個 URL（來源 ${urlList}、並行 ${opts.concurrency}）…`,
-      );
-      result = await scanList(browser, listEntries, opts, log);
-    } else {
-      mode = 'crawl';
-      source = url;
-      log(`自 ${url} 爬取（深度 ${opts.depth}、上限 ${opts.maxPages}、並行 ${opts.concurrency}）…`);
-      result = await crawlSite(browser, url, opts, log);
-    }
-
-    const site = {
-      tool: 'ramp-scan',
-      version,
-      scannedAt: new Date(started).toISOString(),
-      targetLevel: values.level,
-      source,
-      // 局部掃描的範圍（每一頁都一樣；整頁是 null）
-      scope:
-        opts.scope || opts.scopeExclude
-          ? { include: opts.scope || null, exclude: opts.scopeExclude || null }
-          : null,
-      crawl: {
-        mode,
-        pagesScanned: result.pages.filter((p) => p.ok !== false).length,
-        pagesFailed: result.failed,
-        maxDepth: opts.depth,
-        maxPages: opts.maxPages,
-        truncated: result.truncated,
-      },
-      siteSummary: aggregate(result.pages),
-      manualChecks: manualChecksReport(values.level),
-      byLanguage: aggregateByLanguage(result.pages),
-      pages: result.pages,
-    };
-    if (!site.byLanguage) delete site.byLanguage;
-
-    const base = mode === 'crawl' ? safeHost(source) + '-site' : 'urllist';
-    const written = [];
-    if (fmtJson) written.push(writeReport(values.out, base, site));
-    if (fmtHtml) written.push(writeHtml(values.out, base, site.scannedAt, buildSiteHtml(site)));
-    if (!values.quiet) printSiteSummary(site);
-    log(`\n報告已寫入：\n  ${written.join('\n  ')}`);
-
-    // 離開碼契約（見 --help 與 multiPageExitCode）：部分頁面失敗仍為 0（報告有記
-    // pagesFailed），避免大站零星逾時把 CI 弄紅
-    const code = multiPageExitCode(result.pages, values['fail-on'], values.level);
-    if (code === 2) {
-      console.error(
-        `✘ 全部 ${result.pages.length} 頁掃描失敗（離開碼 2），請檢查網路、CSP 或 --timeout`,
-      );
-    } else if (code === 3) {
-      const n = result.pages.filter(
-        (p) => p.ok !== false && failOnTriggered(p.summary.byLevel, 'violations', values.level),
-      ).length;
-      console.error(`✘ --fail-on violations：${n} 頁有目標 ${values.level} 內的違規（離開碼 3）`);
-    }
-    process.exitCode = code;
-  } finally {
-    await browser.close();
   }
 }
 
