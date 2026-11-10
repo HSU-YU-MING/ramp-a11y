@@ -905,6 +905,24 @@ function safeHost(url) {
   }
 }
 
+/**
+ * 刪掉 --login 用的暫存 Chrome 設定檔。Windows 上 Chrome 關掉後常會短暫鎖住設定檔資料夾
+ * （EBUSY／EPERM），所以讓 rmSync 自己重試幾秒。還是刪不掉就警告、不丟例外——掃描已經完成，
+ * 不該因為清暫存把結果變成失敗；但那個資料夾裡有登入的 cookie，不能安靜留著，要說出路徑請使用者刪。
+ * @returns {boolean} 刪掉了沒
+ */
+function removeTempProfile(dir, rm = fs.rmSync, warn = (m) => console.error(m)) {
+  try {
+    rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    return true;
+  } catch (e) {
+    warn(
+      `提醒：暫存的登入設定檔刪不掉（${e.code || e.message}），裡面有這次登入的 cookie，請自行刪除：${dir}`,
+    );
+    return false;
+  }
+}
+
 // ===== 進入點 =====
 async function main() {
   let parsed;
@@ -1091,7 +1109,7 @@ async function main() {
     }
     await runWithBrowser(userDataDir);
   } finally {
-    if (tempProfile) fs.rmSync(tempProfile, { recursive: true, force: true });
+    if (tempProfile) removeTempProfile(tempProfile);
   }
 
   async function runWithBrowser(profileDir) {
@@ -1263,6 +1281,7 @@ module.exports = {
   multiPageExitCode,
   isTruthyEnv,
   chromeLaunchArgs,
+  removeTempProfile,
   visitPage,
   scanList,
 };
