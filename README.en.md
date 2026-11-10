@@ -106,7 +106,7 @@ npm run lint         # ESLint (flat config)
 npm run format:check # Prettier
 npm run test:unit    # Pure-function unit tests (jsdom, no Chrome): 192 checks
 npm run test:self    # Static a11y contract test on the popup: 13 checks
-npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 103 checks
+npm run test:cli     # Full-site CLI pure-function tests (URL/CSV/aggregate/target-split): 107 checks
 npm run test:docs    # README claim guard (test counts / check-code count / axe version)
 npm test             # End-to-end (needs local Chrome; CHROME_PATH to override): 77 checks
 npm run test:nvda    # Real-NVDA comparison (interactive desktop; see test/nvda/)

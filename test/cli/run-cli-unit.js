@@ -608,6 +608,51 @@ fs.rmSync(tmp, { recursive: true, force: true });
     );
   }
 
+  // ===== --login 的暫存設定檔：Windows 上 Chrome 剛關常鎖住資料夾，要重試；刪不掉要說路徑（裡面有 cookie） =====
+  {
+    const os = require('os');
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'ramp-login-test-'));
+    fs.writeFileSync(path.join(real, 'Cookies'), 'x');
+    check('暫存設定檔：真的刪掉', cli.removeTempProfile(real) === true && !fs.existsSync(real));
+    let opts = null;
+    cli.removeTempProfile(
+      'C:/fake',
+      (d, o) => {
+        opts = o;
+      },
+      () => {},
+    );
+    check(
+      '暫存設定檔：讓 rmSync 自己重試（EBUSY／EPERM）',
+      !!opts && opts.maxRetries >= 5 && opts.recursive === true,
+      JSON.stringify(opts),
+    );
+    const warned = [];
+    let threw = false;
+    let ok = true;
+    try {
+      ok = cli.removeTempProfile(
+        'C:/locked/ramp-login-abc',
+        () => {
+          const e = new Error('busy');
+          e.code = 'EBUSY';
+          throw e;
+        },
+        (m) => warned.push(m),
+      );
+    } catch (e) {
+      threw = true;
+    }
+    check('暫存設定檔：刪不掉不丟例外（掃描結果不該因此變失敗）', !threw && ok === false);
+    check(
+      '暫存設定檔：刪不掉要警告並說出路徑',
+      warned.length === 1 &&
+        warned[0].includes('C:/locked/ramp-login-abc') &&
+        warned[0].includes('EBUSY'),
+      warned[0],
+    );
+  }
+
   const fails = results.filter((r) => !r.ok).length;
   console.log(`\n==== ${results.length - fails}/${results.length} PASS ====`);
   process.exit(fails ? 1 : 0);
