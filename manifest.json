@@ -3,7 +3,7 @@
   "name": "Ramp 無障礙檢測",
   "short_name": "Ramp",
   "description": "一鍵檢測網頁無障礙問題，繁中解說並對應台灣「網站無障礙規範」準則與檢測碼。內建 NVDA 報讀預覽——不會操作報讀軟體，也能看見視障使用者聽到的內容。",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minimum_chrome_version": "102",
   "action": {
     "default_popup": "popup/popup.html",
