@@ -307,6 +307,74 @@ function manualChecksReport(targetLevel) {
   return MANUAL_CHECKS.map((c) => ({ ...c, withinTarget: shownIds.has(c.id) }));
 }
 
+/**
+ * 等進場動畫跑完再量。
+ *
+ * ⚠ 為什麼需要：`networkidle2` 只管網路，對 CSS 動畫一個字都沒說。作品集首頁有 1.36 秒的
+ * 進場淡入（`.hero-anim` 加上 `.d2` 的 0.26s 延遲），而我們在它跑完之前就注入 axe ——
+ * 有時量到半透明的文字，對比度算出來比實際低。**同一頁跑四次得到 `exit 3, 3, 3, 0`。**
+ * 這對被掃的網站是誤報；對這個工具是最嚴重的缺陷：**隨機綠紅的門檻會訓練使用者
+ * 「重跑到綠為止」，比沒有門檻更糟。**
+ *
+ * 做法是問瀏覽器「動畫跑完了嗎」，而不是猜一個秒數。`document.getAnimations()` 同時含
+ * CSS transition 與 animation，每個都有 `finished` Promise。
+ *
+ * 三個刻意的細節：
+ *
+ * 1. **一定要濾掉無限循環的動畫**（`iterations: Infinity`）。loading spinner、跑馬燈、
+ *    脈動的提示點永遠不會 `finished`，不濾掉就等到逾時為止 —— 每一頁都慢上好幾秒。
+ * 2. **絕對不要改成「關掉動畫」**。直覺會想把 `animation-duration` 設成 0 或 `transition: none`，
+ *    但那會讓元素停在動畫的**第 0 格** —— 對淡入來說就是完全透明，量出來比不等更糟。
+ *    Parity 的 `SettleScript.cs` 檔頭把這個坑與另一個（捲動觸發的進場效果）都記下來了。
+ * 3. **逾時不是失敗**。等不到就照樣掃，頂多是回到修這個 bug 之前的行為；
+ *    為了動畫沒停而讓整頁掃不出來，是拿更壞的結果換更乾淨的邏輯。
+ *
+ * ⚠ **這條只修「載入就開始跑」的動畫，修不到捲動觸發的進場效果。** 首屏以下那種
+ * `IntersectionObserver` 加 class 的寫法（`.reveal{opacity:0}` → `.reveal.in{opacity:1}`）
+ * 永遠不會被觸發，**整段內容以 opacity:0 進入掃描，axe 根本量不到它**。
+ * 實測作品集首頁：`section-head reveal`、`card reveal` 在等待前後都是 `opacity: 0`。
+ *
+ * 試過 Parity 的 `SettleScript.cs` 那招（把視窗高度暫時撐到整頁高，讓所有
+ * IntersectionObserver 必然觸發）—— **在這個網站上沒有效**，reveal 仍然停在 opacity 0，
+ * 所以那段程式碼沒有留下來（留著等於留一段註解說得比做到的多）。原因還沒查清楚。
+ *
+ * 這件事的真正出口不是繼續猜等待策略，而是**讓工具承認自己沒量到**：
+ * 一頁的內容大多落在「需人工複核」或 opacity 0 時，不該回報「0 violations」就了事。
+ * XamlContrast 的 `--min-coverage` 與 exit 3（"nothing was audited, this result does not
+ * mean the project passes"）就是這件事，Ramp 這邊還沒有對應物。
+ */
+async function settleAnimations(page, timeout) {
+  // 關掉等待的開關。存在的理由有二：回歸測試要靠它產生「沒等就量」的對照組
+  // （test/cli/settle-animations.js），以及萬一某個網站的動畫讓等待變成問題時，
+  // 使用者有辦法退回舊行為而不用降版。沒有做成 CLI 旗標：那是契約面，而這是逃生口。
+  if (process.env.RAMP_SKIP_ANIMATION_SETTLE) return;
+  // 動畫的等待上限刻意比整體 timeout 小：留時間給真正的掃描
+  const budget = Math.max(1000, Math.min(5000, Math.floor(timeout / 2)));
+  try {
+    await page.evaluate(async (ms) => {
+      const finite = document
+        .getAnimations()
+        .filter((a) => {
+          try {
+            return a.effect && a.effect.getComputedTiming().iterations !== Infinity;
+          } catch {
+            return false; // 拿不到 timing 的就不等它
+          }
+        })
+        .map((a) => a.finished.catch(() => {})); // 被取消的動畫會 reject，那也算結束
+      if (!finite.length) return;
+      await Promise.race([
+        Promise.all(finite),
+        new Promise((resolve) => setTimeout(resolve, ms)),
+      ]);
+      // 動畫結束到版面真的定案之間還差兩個 frame（最後一次 commit + 一次重排）
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }, budget);
+  } catch {
+    // 等不到就算了，照樣掃（見上面第 3 點）
+  }
+}
+
 // ===== 訪問單一頁面：載入 → 掃描 → 蒐集連結 =====
 const INJECT = ['vendor/axe.min.js', 'vendor/axe-locale-zh_TW.js', 'content/scanner.js'];
 async function visitPage(browser, url, opts) {
@@ -337,6 +405,7 @@ async function visitPage(browser, url, opts) {
       });
     }
     await page.goto(url, { waitUntil: 'networkidle2', timeout: opts.timeout });
+    await settleAnimations(page, opts.timeout);
     const title = await page.title();
     for (const f of INJECT) {
       await page.addScriptTag({ content: fs.readFileSync(path.join(REPO, f), 'utf8') });

@@ -228,6 +228,18 @@ engines 抬到 Node 22.12、Chrome 沙箱改為預設保留、離開碼契約改
 - **商店上架是手動的**，`npm run pack` 之後要人去後台上傳、等審查（`SECURITY.md` 已把
   「審查通常數日、無法保證」列為安全揭露的落差期）。這是刻意接受的，不是待辦。
 - **`vendor/` 沒有自動同步腳本**，只有 README〈vendor 檔案的取得與更新〉裡的手動 curl 指令。
+- **捲動觸發的進場效果會讓內容完全不被檢查，而報告看起來是乾淨的。** 2026-11-13 實測
+  作品集首頁：`.reveal` 那種「`IntersectionObserver` 加 class」的寫法，首屏以下永遠不會觸發，
+  元素以 `opacity: 0` 進入掃描 —— **axe 連「需人工複核」都不會記，它直接跳過不可見元素。**
+  `section-head reveal`、`card reveal` 在等動畫前後都是 `opacity: 0`。
+  - 試過 Parity `SettleScript.cs` 的招（把視窗高度撐到整頁高讓所有 observer 必然觸發），
+    **在這個網站上沒效**，所以那段程式碼沒有留下來。原因還沒查清楚。
+  - ⚠ **這件事不能用「覆蓋率下限」直接解決**（原本以為可以照抄 XamlContrast 的
+    `--min-coverage`）：XamlContrast 自己列舉配對，所以有分母；Ramp 把判定交給 axe，
+    **而 axe 跳過的元素不會出現在 violations／passes／incomplete 任何一個桶子裡**，
+    所以「definite / (definite + incomplete)」這種比率算出來照樣是 100%。
+    要有真的覆蓋率，Ramp 得自己量分母（頁面上有多少承載文字的元素 vs 其中幾個拿到
+    color-contrast 判定）—— 那是新功能、需要先定義「什麼算該檢查的文字」，不是補一個旗標。
 - `.claude/settings.local.json` 裡的 46 條 allow 規則路徑**全是舊的 `D:\ramp-a11y\`**，
   專案搬到 `D:\擴充功能\chrome擴充\ramp-a11y` 之後就對不上了，等於失效。`.claude/` 已被
   gitignore，影響只在本機——想清就清。

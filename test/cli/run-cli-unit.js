@@ -331,8 +331,22 @@ fs.rmSync(tmp, { recursive: true, force: true });
     goto: async () => calls.push('goto'),
     title: async () => 't',
     addScriptTag: async () => calls.push('inject'),
-    evaluate: async () =>
-      calls.includes('scan') ? [] : (calls.push('scan'), { violations: [], incomplete: [] }),
+    // 依「傳進來的函式是哪一個」分派，不要靠呼叫順序。
+    // 原本是「第一次 evaluate 就回掃描結果」，於是 visitPage 多一個 evaluate（等動畫）
+    // 就把掃描結果吃掉了，而且錯誤是在 buildPageReport 裡炸成 `undefined.map` —— 離現場很遠。
+    evaluate: async (fn) => {
+      const src = String(fn);
+      if (src.includes('getAnimations')) {
+        calls.push('settle');
+        return undefined;
+      }
+      if (src.includes('__rampA11yScan')) {
+        calls.push('scan');
+        return { violations: [], incomplete: [] };
+      }
+      calls.push('evaluate');
+      return [];
+    },
     url: () => 'https://x.example/',
     close: async () => calls.push('close'),
   };
@@ -340,6 +354,14 @@ fs.rmSync(tmp, { recursive: true, force: true });
   check(
     'visitPage 在 goto 之前 setBypassCSP(true)',
     calls.indexOf('csp:true') >= 0 && calls.indexOf('csp:true') < calls.indexOf('goto'),
+    calls.join(' → '),
+  );
+  // 等動畫跑完才注入 axe：注入之後才等就沒有意義（axe 已經拿到動畫途中的值）
+  check(
+    'visitPage 在注入 axe 之前先等動畫跑完',
+    calls.indexOf('settle') >= 0 &&
+      calls.indexOf('goto') < calls.indexOf('settle') &&
+      calls.indexOf('settle') < calls.indexOf('inject'),
     calls.join(' → '),
   );
   const pkgVer = require(path.resolve(__dirname, '..', '..', 'package.json')).version;
@@ -556,8 +578,16 @@ fs.rmSync(tmp, { recursive: true, force: true });
       goto: async () => seen.push('goto'),
       title: async () => 't',
       addScriptTag: async () => {},
-      evaluate: async () =>
-        seen.includes('scan') ? [] : (seen.push('scan'), { violations: [], incomplete: [] }),
+      // 同上：依傳進來的函式分派，不要靠呼叫順序（見上面那個 fakePage 的註解）
+      evaluate: async (fn) => {
+        const src = String(fn);
+        if (src.includes('getAnimations')) return undefined;
+        if (src.includes('__rampA11yScan')) {
+          seen.push('scan');
+          return { violations: [], incomplete: [] };
+        }
+        return [];
+      },
       url: () => 'https://gov.test/admin',
       close: async () => {},
     };
