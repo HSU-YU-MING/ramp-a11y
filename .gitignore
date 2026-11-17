@@ -18,3 +18,6 @@ test/nvda/last-live-run.json
 
 # CLI 掃描報告輸出
 ramp-report/
+
+# 開發過程的歸檔(稽核紀錄、驗證腳本)——內部筆記,刻意留在版控外
+docs/歸檔/
