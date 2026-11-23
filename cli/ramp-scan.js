@@ -363,10 +363,7 @@ async function settleAnimations(page, timeout) {
         })
         .map((a) => a.finished.catch(() => {})); // 被取消的動畫會 reject，那也算結束
       if (!finite.length) return;
-      await Promise.race([
-        Promise.all(finite),
-        new Promise((resolve) => setTimeout(resolve, ms)),
-      ]);
+      await Promise.race([Promise.all(finite), new Promise((resolve) => setTimeout(resolve, ms))]);
       // 動畫結束到版面真的定案之間還差兩個 frame（最後一次 commit + 一次重排）
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, budget);

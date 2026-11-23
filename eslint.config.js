@@ -19,7 +19,7 @@ const commonRules = {
 };
 
 module.exports = [
-  { ignores: ['node_modules/**', 'dist/**', 'vendor/**', 'test/e2e/output/**'] },
+  { ignores: ['node_modules/**', 'dist/**', 'vendor/**', 'test/e2e/output/**', 'docs/歸檔/**'] },
 
   js.configs.recommended,
 
